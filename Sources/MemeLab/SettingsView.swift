@@ -26,7 +26,7 @@ struct SettingsView: View {
                 }
                 SectionLabel(text: "Library")
                 Card {
-                    Row(title: "Library folder", caption: libraryFolder) {
+                    Row(title: "Library folder", caption: "\(libraryFolder). Choosing another folder moves your saved and made files there.") {
                         Button("Choose…", action: chooseFolder).buttonStyle(PillButtonStyle())
                     }
                     RowDivider()
@@ -86,7 +86,7 @@ struct SettingsView: View {
         open.canCreateDirectories = true
         open.prompt = "Use Folder"
         guard open.runModal() == .OK, let url = open.url else { return }
-        model.setting("libraryDir", url.path)
+        model.moveLibrary(to: url)
     }
 }
 

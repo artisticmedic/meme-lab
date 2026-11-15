@@ -101,13 +101,16 @@ final class AppModel: ObservableObject {
     }
 
     func reloadStatus() {
-        let old = status
-        status = store.load()
-        if let request = status.request, !AppLink.isAlive(request.pid) {
+        var fresh = store.load()
+        if let request = fresh.request, !AppLink.isAlive(request.pid) {
             AppLink.withdraw(request.id, store: store)
-            status = store.load()
+            fresh = store.load()
         }
-        if old != status { onStatusChange?(old, status) }
+        guard fresh != status else { return }
+        if let request = fresh.request, request.items.contains(where: { item($0) == nil }) { reloadLibrary() }
+        let old = status
+        status = fresh
+        onStatusChange?(old, status)
     }
 
     /// Shows a status without writing it, for `--render`.
@@ -167,6 +170,15 @@ final class AppModel: ObservableObject {
     }
 
     static let trayLimit = 4
+
+    func pick(_ ids: [String]) {
+        perform {
+            try store.update { status in
+                for id in ids where !status.picks.contains(id) && status.picks.count < Self.trayLimit { status.picks.append(id) }
+            }
+        }
+        reloadStatus()
+    }
 
     func togglePick(_ id: String) {
         perform {
@@ -236,22 +248,55 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Saves whatever was removed even when one item fails, so the index never lists files already in the Trash.
     func remove(_ ids: [String]) {
+        var removed: [String] = []
+        var failures: [String] = []
         mutate { library in
-            for id in ids { _ = try library.remove(id) }
+            for id in ids {
+                do {
+                    _ = try library.remove(id)
+                    removed.append(id)
+                } catch {
+                    failures.append("\(error)")
+                }
+            }
         }
-        perform { try store.update { $0.picks.removeAll { ids.contains($0) } } }
+        perform { try store.update { $0.picks.removeAll { removed.contains($0) } } }
         reloadStatus()
+        if !failures.isEmpty { error = failures.joined(separator: " ") }
     }
 
-    func update(_ id: String, _ change: @escaping (inout Item) -> Void) {
-        mutate { library in _ = try library.update(id, change) }
+    func update(_ ids: [String], _ change: @escaping (inout Item) -> Void) {
+        mutate { library in
+            for id in ids { _ = try library.update(id, change) }
+        }
     }
+
+    func update(_ id: String, _ change: @escaping (inout Item) -> Void) { update([id], change) }
 
     func setting(_ key: String, _ value: String) {
         perform { config = try ConfigStore(url: paths.config).set(key, to: value) }
         reloadConfig()
         if key == "libraryDir" { reloadLibrary() }
+    }
+
+    /// Moves Saved/ and Made/ into the new folder before pointing the library at it, so no item loses its file.
+    func moveLibrary(to folder: URL) {
+        let old = library?.root ?? paths.defaultLibrary
+        guard folder.standardizedFileURL.path != old.standardizedFileURL.path else { return }
+        let fm = FileManager.default
+        let parts = ["Saved", "Made"].filter { fm.fileExists(atPath: old.appending(path: $0).path) }
+        perform {
+            if let clash = parts.first(where: { fm.fileExists(atPath: folder.appending(path: $0).path) }) {
+                throw MemeError("\(folder.path) already has a \(clash) folder. Choose a folder without Saved or Made in it.")
+            }
+            try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+            for part in parts { try fm.moveItem(at: old.appending(path: part), to: folder.appending(path: part)) }
+            config = try ConfigStore(url: paths.config).set("libraryDir", to: folder.path)
+        }
+        reloadConfig()
+        reloadLibrary()
     }
 
     func sync() {
@@ -276,8 +321,10 @@ final class AppModel: ObservableObject {
             let fresh = try Library(paths: paths, config: config)
             try change(fresh)
             try fresh.save()
+            library = fresh
+            items = fresh.visible
+            stamps[paths.index] = Self.modified(paths.index)
         }
-        reloadLibrary()
     }
 
     private func perform(_ work: () throws -> Void) {

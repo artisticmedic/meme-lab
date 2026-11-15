@@ -32,6 +32,11 @@ final class PanelState: ObservableObject {
         return model.items(shelf, matching: query)
     }
 
+    /// Options keep the agent's numbering even if one cannot be shown.
+    var numbers: [String: Int] {
+        Dictionary((request?.items ?? []).enumerated().map { ($1, $0 + 1) }, uniquingKeysWith: { first, _ in first })
+    }
+
     func sync(with request: AppRequest?) {
         guard request?.id != requestID else { return }
         requestID = request?.id
@@ -120,7 +125,7 @@ struct PanelView: View {
         }
     }
 
-    private func grid(_ items: [Item], picked: Set<String>, numbered: Bool = false, captions: Bool = false) -> some View {
+    private func grid(_ items: [Item], picked: Set<String>, numbers: [String: Int] = [:], captions: Bool = false) -> some View {
         ScrollViewReader { proxy in
             ScrollView {
                 if items.isEmpty {
@@ -130,7 +135,7 @@ struct PanelView: View {
                 }
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 4), GridItem(.flexible(), spacing: 4)], spacing: 4) {
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                        Tile(item: item, number: numbered ? index + 1 : nil, picked: picked.contains(item.id),
+                        Tile(item: item, number: numbers[item.id], picked: picked.contains(item.id),
                              selected: state.focus == index, height: 96, caption: captions ? caption(item) : nil)
                             .id(item.id)
                             .onTapGesture { state.focus = index; state.activate(item) }
@@ -197,7 +202,7 @@ struct PanelView: View {
         let items = state.list
         VStack(alignment: .leading, spacing: 8) {
             if request.mode == .pick { SearchField(text: $state.query, focus: $searchFocused) }
-            grid(items, picked: Set(state.chosen), numbered: request.mode == .propose, captions: request.mode == .propose)
+            grid(items, picked: Set(state.chosen), numbers: request.mode == .propose ? state.numbers : [:], captions: request.mode == .propose)
             if request.mode == .propose {
                 InputField(prompt: "What to change, like “2, shorter caption”", text: $state.note)
             }
@@ -391,9 +396,10 @@ final class PanelController: NSObject, NSWindowDelegate {
                 return false
             }
         default:
-            if request?.mode == .propose, !textFocused, let ch, let number = Int(ch), number >= 1, number <= state.list.count {
-                state.focus = number - 1
-                state.chosen = [state.list[number - 1].id]
+            if let request, request.mode == .propose, !textFocused, let ch, let number = Int(ch), number >= 1, number <= request.items.count,
+               let index = state.list.firstIndex(where: { $0.id == request.items[number - 1] }) {
+                state.focus = index
+                state.chosen = [request.items[number - 1]]
                 return true
             }
             return false

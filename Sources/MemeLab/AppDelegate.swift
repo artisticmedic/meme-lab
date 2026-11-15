@@ -9,7 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSDr
     private var item: NSStatusItem!
     private var panel: PanelController!
     private var library: NSWindow?
-    private var requestCheck: Timer?
+    private var waitingCommand: DispatchSourceProcess?
     private var openedRequest: String?
 
     func applicationDidFinishLaunching(_ note: Notification) {
@@ -70,12 +70,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSDr
     private func statusChanged(_ status: Status) {
         item.button?.image = Mark.menuBarIcon(waiting: status.request != nil)
         panel.state.sync(with: status.request)
-        requestCheck?.invalidate()
-        requestCheck = nil
-        guard let request = status.request else { return }
+        guard let request = status.request else {
+            waitingCommand?.cancel()
+            waitingCommand = nil
+            return
+        }
         // The waiting command may be killed without a chance to withdraw its request.
-        requestCheck = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.model.reloadStatus() }
+        if waitingCommand?.handle != request.pid {
+            waitingCommand?.cancel()
+            let source = DispatchSource.makeProcessSource(identifier: request.pid, eventMask: .exit, queue: .main)
+            source.setEventHandler { [weak self] in MainActor.assumeIsolated { self?.model.reloadStatus() } }
+            source.resume()
+            waitingCommand = source
+            if !AppLink.isAlive(request.pid) { model.reloadStatus() }
         }
         if request.open, openedRequest != request.id {
             openedRequest = request.id
@@ -125,12 +132,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSDr
 
     @objc func addFiles() {
         openLibrary()
-        let open = NSOpenPanel()
-        open.allowsMultipleSelection = true
-        open.allowedContentTypes = [.gif, .image, .movie]
-        open.prompt = "Add"
-        guard open.runModal() == .OK else { return }
-        model.add(open.urls, recording: false)
+        guard let files = LibraryView.chooseMedia() else { return }
+        model.add(files, recording: false)
     }
 
     func windowWillClose(_ notification: Notification) {

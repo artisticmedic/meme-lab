@@ -35,15 +35,10 @@ enum AppBridge {
     }
 
     static func wait(_ request: AppRequest, store: StatusStore, timeout: Double, appAlive: () -> Bool) throws -> PickerResult {
-        let interrupt = DispatchSource.makeSignalSource(signal: SIGINT, queue: .global())
-        signal(SIGINT, SIG_IGN)
-        interrupt.setEventHandler {
+        let interrupt = onInterrupt(exitCode: 130) {
             AppLink.withdraw(request.id, store: store)
             notify("changed")
-            Darwin.exit(130)
         }
-        interrupt.setCancelHandler { signal(SIGINT, SIG_DFL) }
-        interrupt.resume()
         defer { interrupt.cancel() }
         let outcome = try AppLink.ask(request, store: store, timeout: timeout, appAlive: appAlive, notify: { notify("changed") })
         notify("changed")
@@ -51,8 +46,7 @@ enum AppBridge {
         case .answered(let result):
             return result
         case .timedOut:
-            say("Nobody chose within \(Int(timeout)) second\(Int(timeout) == 1 ? "" : "s").")
-            throw ExitCode(124)
+            throw nobodyChose(timeout)
         case .withdrawn:
             throw MemeError("Another request replaced this one before anyone chose.")
         case .appQuit:

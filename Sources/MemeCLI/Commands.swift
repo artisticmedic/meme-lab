@@ -8,7 +8,7 @@ public struct Meme: AsyncParsableCommand {
 
     /// Arguments that mean the binary was started as the command, not as the app.
     public static var verbs: Set<String> {
-        Set(configuration.subcommands.compactMap { $0.configuration.commandName } + ["help", "-h", "--help", "--version"])
+        Set(configuration.subcommands.map { $0._commandName } + ["help", "-h", "--help", "--version"])
     }
 
     public static let configuration = CommandConfiguration(
@@ -182,27 +182,31 @@ struct Pick: ParsableCommand {
 }
 
 /// Keep the returned source alive.
-func stopOnInterrupt(_ picker: Picker, exitCode: Int32) -> DispatchSourceSignal {
+func onInterrupt(exitCode: Int32, cleanup: @escaping @Sendable () -> Void) -> DispatchSourceSignal {
     let source = DispatchSource.makeSignalSource(signal: SIGINT, queue: .global())
     signal(SIGINT, SIG_IGN)
-    source.setEventHandler { picker.stop(); Darwin.exit(exitCode) }
+    source.setEventHandler { cleanup(); Darwin.exit(exitCode) }
     source.setCancelHandler { signal(SIGINT, SIG_DFL) }
     source.resume()
     return source
 }
 
+func nobodyChose(_ timeout: Double) -> ExitCode {
+    say("Nobody chose within \(Int(timeout)) second\(Int(timeout) == 1 ? "" : "s").")
+    return ExitCode(124)
+}
+
 @discardableResult
 func waitForChoice(_ picker: Picker, timeout: Double, open: Bool, print printResult: Bool = true) throws -> PickerResult {
     try picker.start()
-    let interrupt = stopOnInterrupt(picker, exitCode: 130)
+    let interrupt = onInterrupt(exitCode: 130) { picker.stop() }
     defer { interrupt.cancel() }
     say("Picker page: \(picker.url.absoluteString)")
     if open { openInBrowser(picker.url) }
     let result = picker.wait(timeout: timeout)
     picker.stop()
     guard let result else {
-        say("Nobody chose within \(Int(timeout)) second\(Int(timeout) == 1 ? "" : "s").")
-        throw ExitCode(124)
+        throw nobodyChose(timeout)
     }
     if printResult { try output(result) }
     return result
@@ -225,7 +229,7 @@ struct Browse: ParsableCommand {
         }
         let picker = try Picker(library: try Library.open(), mode: .browse, port: port)
         try picker.start()
-        let interrupt = stopOnInterrupt(picker, exitCode: 0)
+        let interrupt = onInterrupt(exitCode: 0) { picker.stop() }
         defer { interrupt.cancel() }
         say("Meme Lab is open at \(picker.url.absoluteString)")
         say("Control-C to stop.")

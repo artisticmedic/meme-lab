@@ -27,6 +27,7 @@ final class MediaStore {
 }
 
 struct Frames: @unchecked Sendable {
+    let id = UUID()
     let images: [CGImage]
     let delays: [Double]
     var duration: Double { delays.reduce(0, +) }
@@ -108,10 +109,10 @@ enum FrameCache {
 }
 
 final class MediaLayerView: NSView {
-    var frames: Frames? { didSet { refresh() } }
+    var frames: Frames? { didSet { if oldValue?.id != frames?.id { refresh() } } }
     var video: URL? { didSet { if oldValue != video { stopVideo(); refresh() } } }
     var playing = false { didSet { if oldValue != playing { refresh() } } }
-    var fill = true { didSet { refresh() } }
+    var fill = true { didSet { if oldValue != fill { refresh() } } }
     private let imageLayer = CALayer()
     private var playerLayer: AVPlayerLayer?
     private var looper: AVPlayerLooper?

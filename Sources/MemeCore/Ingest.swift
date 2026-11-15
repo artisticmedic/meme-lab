@@ -16,6 +16,8 @@ extension Library {
         async let imgflipMemes = Imgflip.fetch()
         let templates = try await memegenItems
         let popular = try await imgflipMemes
+        // Edits saved while fetching would otherwise be overwritten by this instance's older copies.
+        try reload()
 
         var newTemplates: [String] = []
         for fresh in templates {

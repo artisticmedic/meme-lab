@@ -63,7 +63,7 @@ GIPHY, KLIPY and Tenor media are link-only under their terms, which forbid downl
 | `~/Library/Application Support/Meme Lab/config.json` | Settings. The app and `meme set` both write it. Missing keys fall back to defaults. A file that does not parse is never overwritten. |
 | `~/Library/Application Support/Meme Lab/status.json` | Picks, a waiting agent's request, the running app, the last made meme. |
 | `~/Library/Application Support/Meme Lab/index.json` | The library index. |
-| `~/Pictures/Meme Lab/` | `Saved/` and `Made/`. **Settings › Library folder** or `meme set libraryDir` moves it. |
+| `~/Pictures/Meme Lab/` | `Saved/` and `Made/`. **Settings › Library folder** moves them; `meme set libraryDir` only points Meme Lab at another folder. |
 | `~/Library/Caches/Meme Lab/` | Template images, strips and render scratch space. |
 
 `MEME_LAB_HOME=<folder>` puts all of these under one folder.

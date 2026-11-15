@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import MemeCore
+import MemeCLI
 
 struct AppLinkTests {
     static func store() throws -> StatusStore {
@@ -102,5 +103,15 @@ struct AppConfigTests {
         #expect(try store.set("animateAlways", to: "true").animateAlways)
         #expect(throws: MemeError.self) { try store.set("animateAlways", to: "yes") }
         #expect(try store.load().value(of: "animateAlways") == "true")
+    }
+}
+
+struct CommandVerbTests {
+    @Test func everySubcommandStartsTheCommandNotTheApp() {
+        let verbs = Meme.verbs
+        for verb in ["sync", "make", "propose", "pick", "picks", "send", "browse", "add", "import", "tag", "remove", "search", "status", "get", "set", "--help"] {
+            #expect(verbs.contains(verb), "\(verb)")
+        }
+        #expect(!verbs.contains("--render"))
     }
 }

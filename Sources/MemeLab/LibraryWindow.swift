@@ -60,7 +60,7 @@ struct LibraryView: View {
             Button("Create") {
                 let name = state.newCollection.trimmingCharacters(in: .whitespaces)
                 if !name.isEmpty {
-                    for id in state.selection { model.update(id) { if !$0.collections.contains(name) { $0.collections.append(name) } } }
+                    model.update(state.selection) { if !$0.collections.contains(name) { $0.collections.append(name) } }
                     state.shelf = .collection(name)
                 }
                 state.newCollection = ""
@@ -98,7 +98,7 @@ struct LibraryView: View {
                 sidebarRow(.collection(name), title: name)
                     .contextMenu {
                         Button("Delete Collection") {
-                            for item in model.items where item.collections.contains(name) { model.update(item.id) { $0.collections.removeAll { $0 == name } } }
+                            model.update(model.items.filter { $0.collections.contains(name) }.map(\.id)) { $0.collections.removeAll { $0 == name } }
                             if state.shelf == .collection(name) { state.shelf = .all }
                         }
                     }
@@ -223,13 +223,17 @@ struct LibraryView: View {
     }
 
     private func addFiles(recording: Bool) {
+        guard let files = Self.chooseMedia() else { return }
+        model.add(files, recording: recording)
+    }
+
+    static func chooseMedia() -> [URL]? {
         let open = NSOpenPanel()
         open.allowsMultipleSelection = true
         open.canChooseDirectories = false
         open.allowedContentTypes = [.gif, .image, .movie]
         open.prompt = "Add"
-        guard open.runModal() == .OK else { return }
-        model.add(open.urls, recording: recording)
+        return open.runModal() == .OK ? open.urls : nil
     }
 }
 
@@ -257,7 +261,7 @@ struct DetailPane: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("\(state.selection.count) selected").font(.system(size: 15, weight: .semibold))
             HStack(spacing: 8) {
-                Button("Pick") { for id in state.selection where !model.status.picks.contains(id) { model.togglePick(id) } }
+                Button("Pick") { model.pick(state.selection) }
                     .buttonStyle(PillButtonStyle(prominent: true))
                 Button("Remove…") { state.removing = state.selection }.buttonStyle(PillButtonStyle())
             }
@@ -385,6 +389,7 @@ struct EditableField: View {
                 .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(focused ? 0.08 : 0.04)))
                 .onSubmit(commit)
                 .onChange(of: focused) { _, now in if !now { commit() } }
+                .onDisappear(perform: commit)
         }
         .onAppear { text = value }
         .onChange(of: value) { _, fresh in if !focused { text = fresh } }
