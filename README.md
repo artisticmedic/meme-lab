@@ -6,7 +6,7 @@ The command does no reasoning of its own. It searches, renders, shows and delive
 
 ## What it does
 
-- **Library.** Meme Lab starts with about 280 templates: memegen's set and Imgflip's 100 most popular. It also holds clips Tim adds: his own recordings, saved GIFs and Wikimedia Commons files. Each item carries a one-line feeling, so a search for "waiting" or "smug calm" finds the right template.
+- **Library.** Meme Lab starts with about 270 templates: memegen's set and Imgflip's 100 most popular. It also holds clips Tim adds: his own recordings, saved GIFs and Wikimedia Commons files. Each item carries a one-line feeling, so a search for "waiting" or "smug calm" finds the right template.
 - **Staying current.** `meme sync` pulls memegen's template list and Imgflip's popular list. Templates new to either list appear under "New and rising" for two weeks.
 - **Rendering.** Captions come in four styles: classic, caption bar, subtitle, and the template's own text boxes. Items combine in four layouts: single, side by side, stacked and in sequence. Text is drawn with Core Text; ffmpeg composes the frames and gifski encodes the GIF. A GIF is shrunk until it fits under 8 MB, and an MP4 is written beside it.
 - **Picker page.** `meme pick`, `meme propose` and `meme browse` serve a page on 127.0.0.1 with an animated grid. The page hands Tim's choice back to the waiting command.

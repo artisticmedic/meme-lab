@@ -33,7 +33,6 @@ public enum Klipy {
         return outcome.status == 0 && String(decoding: outcome.stdout, as: UTF8.self).split(whereSeparator: \.isNewline).contains { $0 == secretName }
     }
 
-    /// The key from `KLIPY_API_KEY`, or from Tim's `secrets` Keychain helper when it holds one.
     public static func key(environment: [String: String] = ProcessInfo.processInfo.environment) throws -> String {
         if let key = environment[secretName], !key.isEmpty { return key }
         if let secrets = secretsTool(environment) {
