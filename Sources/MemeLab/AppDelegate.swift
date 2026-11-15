@@ -118,6 +118,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSDr
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
+            // An empty toolbar only to lower the traffic lights into the 52 pt top bar the SwiftUI columns draw.
+            window.toolbar = NSToolbar()
+            window.toolbarStyle = .unified
+            window.titlebarSeparatorStyle = .none
             window.isReleasedWhenClosed = false
             window.delegate = self
             window.setContentSize(NSSize(width: 1180, height: 760))

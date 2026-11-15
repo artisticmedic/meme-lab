@@ -155,7 +155,7 @@ final class AppModel: ObservableObject {
         return url
     }
 
-    var statusLine: String {
+    var notice: String? {
         if let problem = configProblem { return problem }
         if let request = status.request {
             let who = request.from ?? "Your agent"
@@ -165,6 +165,11 @@ final class AppModel: ObservableObject {
             }
         }
         if items.isEmpty { return "The library is empty. Refresh templates in Settings." }
+        return nil
+    }
+
+    var statusLine: String {
+        if let notice { return notice }
         let picked = status.picks.count
         return "\(items.count) memes." + (picked > 0 ? " \(picked) picked." : "")
     }
@@ -236,6 +241,18 @@ final class AppModel: ObservableObject {
             return
         }
         perform { try Clipboard.copyFile(file) }
+    }
+
+    func preview(_ request: MakeRequest) async throws -> MakePreview {
+        let paths = paths, config = config
+        return try await Task.detached { try await Library(paths: paths, config: config).preview(request) }.value
+    }
+
+    func make(_ request: MakeRequest) async throws -> MakeResult {
+        let paths = paths, config = config
+        let result = try await Task.detached { try await Library(paths: paths, config: config).makeAndSave(request) }.value
+        filesChanged()
+        return result
     }
 
     func add(_ files: [URL], recording: Bool) {

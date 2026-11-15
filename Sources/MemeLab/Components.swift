@@ -249,3 +249,50 @@ extension AppModel {
 
     func recipe(_ item: Item) -> String? { item.made.map(Picker.recipe) }
 }
+
+/// The traffic lights sit in this row; the window's empty toolbar sets its height.
+let topBarHeight: CGFloat = 52
+
+struct TopBar<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        HStack(spacing: 8) { content }
+            .padding(.horizontal, 16)
+            .frame(height: topBarHeight)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(WindowDragArea())
+    }
+}
+
+/// SwiftUI content under a transparent title bar takes the clicks, so the bar's empty space has to move the window itself.
+struct WindowDragArea: NSViewRepresentable {
+    final class DragView: NSView {
+        override func mouseDown(with event: NSEvent) {
+            guard let window else { return }
+            guard event.clickCount == 2 else { return window.performDrag(with: event) }
+            switch UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") {
+            case "Minimize": window.performMiniaturize(nil)
+            case "None": break
+            default: window.performZoom(nil)
+            }
+        }
+    }
+
+    func makeNSView(context: Context) -> NSView { DragView() }
+    func updateNSView(_ view: NSView, context: Context) {}
+}
+
+struct Tabs<Value: Hashable>: View {
+    let options: [(Value, String)]
+    @Binding var selection: Value
+
+    var body: some View {
+        FlowLayout {
+            ForEach(options, id: \.0) { value, title in
+                Button(title) { selection = value }
+                    .buttonStyle(PillButtonStyle(selected: selection == value))
+            }
+        }
+    }
+}

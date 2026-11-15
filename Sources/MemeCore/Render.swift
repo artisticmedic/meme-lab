@@ -5,12 +5,32 @@ public enum Layout: String, CaseIterable, Codable, Sendable {
     case single, side, stack, sequence
 }
 
+public enum Motion: String, CaseIterable, Codable, Sendable {
+    case none, reveal, zoom, shake
+
+    static let revealLead = 0.7
+    static let revealGap = 1.0
+    static let revealHold = 2.0
+
+    static func revealStart(_ step: Int) -> Double { revealLead + Double(step) * revealGap }
+
+    func duration(steps: Int) -> Double? {
+        switch self {
+        case .none: nil
+        case .reveal: Self.revealStart(max(steps, 1) - 1) + Self.revealHold
+        case .zoom: 3
+        case .shake: 2
+        }
+    }
+}
+
 public struct MakeRequest: Sendable {
     public var ids: [String]
     public var captions: [String]
     public var labels: [String]
     public var style: CaptionStyle?
     public var layout: Layout
+    public var motion: Motion
     public var trims: [String]
     public var width: Int?
     public var fps: Int?
@@ -19,7 +39,7 @@ public struct MakeRequest: Sendable {
 
     public init(
         ids: [String], captions: [String] = [], labels: [String] = [], style: CaptionStyle? = nil,
-        layout: Layout? = nil, trims: [String] = [], width: Int? = nil, fps: Int? = nil,
+        layout: Layout? = nil, motion: Motion = .none, trims: [String] = [], width: Int? = nil, fps: Int? = nil,
         maxMB: Double? = nil, maxSeconds: Double? = nil
     ) {
         self.ids = ids
@@ -27,6 +47,7 @@ public struct MakeRequest: Sendable {
         self.labels = labels
         self.style = style
         self.layout = layout ?? (ids.count > 1 ? .side : .single)
+        self.motion = motion
         self.trims = trims
         self.width = width
         self.fps = fps
@@ -47,6 +68,14 @@ public struct MakeResult: Codable, Sendable {
     public let overLimit: Bool
     public let rights: String
     public let attribution: String?
+}
+
+/// `overlay` holds only the captions, on a transparent canvas; the caller lays each item's media under it at `panels`.
+public struct MakePreview: Sendable {
+    public let canvas: CGSize
+    public let bar: CGFloat
+    public let panels: [CGRect]
+    public let overlay: URL
 }
 
 struct RenderInput {
@@ -104,7 +133,7 @@ enum Planner {
         }
     }
 
-    static func plan(layout: Layout, inputs: [RenderInput], width: Int, maxSeconds: Double, barText: String?) -> Plan {
+    static func plan(layout: Layout, inputs: [RenderInput], width: Int, maxSeconds: Double, barText: String?, hold: Double? = nil) -> Plan {
         let (rects, height) = panels(layout: layout, sizes: inputs.map(\.size), width: width)
         let canvasWidth = rects.map(\.maxX).max() ?? CGFloat(width)
         let bar = barText.map { CaptionRenderer.barHeight($0, width: canvasWidth) } ?? 0
@@ -113,7 +142,7 @@ enum Planner {
             let segments = lengths.map { $0 > 0 ? $0 : 1.5 }
             return Plan(width: canvasWidth, contentHeight: height, bar: bar, panels: rects, segments: segments, duration: segments.reduce(0, +))
         }
-        return Plan(width: canvasWidth, contentHeight: height, bar: bar, panels: rects, segments: [], duration: lengths.max() ?? 0)
+        return Plan(width: canvasWidth, contentHeight: height, bar: bar, panels: rects, segments: [], duration: hold ?? lengths.max() ?? 0)
     }
 }
 
@@ -179,6 +208,12 @@ enum Captions {
     }
 }
 
+/// Shown from `from` seconds on; nil shows it throughout.
+struct Overlay {
+    let url: URL
+    var from: Double? = nil
+}
+
 enum FFmpegGraph {
     struct Outputs {
         var frames: URL?
@@ -186,8 +221,8 @@ enum FFmpegGraph {
         var png: URL?
     }
 
-    static func arguments(plan: Plan, layout: Layout, inputs: [RenderInput], panelOverlays: [URL?],
-                          globalOverlay: URL?, fps: Int, outputs: Outputs) -> [String] {
+    static func arguments(plan: Plan, layout: Layout, inputs: [RenderInput], panelOverlays: [[Overlay]],
+                          globalOverlays: [Overlay], motion: Motion = .none, fps: Int, outputs: Outputs) -> [String] {
         var args = ["-v", "error", "-y"]
         let f = Double(fps)
         for (i, input) in inputs.enumerated() {
@@ -201,19 +236,31 @@ enum FFmpegGraph {
             args += ["-i", input.file.path]
         }
         var nextInput = inputs.count
-        var overlayIndex: [Int: Int] = [:]
-        for (i, overlay) in panelOverlays.enumerated() {
-            guard let overlay else { continue }
-            args += ["-i", overlay.path]
-            overlayIndex[i] = nextInput
-            nextInput += 1
+        func addInputs(_ overlays: [Overlay]) -> [Int] {
+            overlays.map { overlay in
+                args += ["-i", overlay.url.path]
+                nextInput += 1
+                return nextInput - 1
+            }
         }
-        let globalIndex: Int? = globalOverlay.map { overlay in
-            args += ["-i", overlay.path]
-            return nextInput
-        }
+        let panelIndexes = panelOverlays.map(addInputs)
+        let globalIndexes = addInputs(globalOverlays)
 
         var chains: [String] = []
+        func layer(_ base: String, _ overlays: [Overlay], _ indexes: [Int], into result: String) {
+            guard !overlays.isEmpty else {
+                chains.append("[\(base)]null[\(result)]")
+                return
+            }
+            var current = base
+            for (n, overlay) in overlays.enumerated() {
+                let next = n == overlays.count - 1 ? result : "\(result)_\(n)"
+                let enable = overlay.from.map { ":enable='gte(t,\(seconds($0)))'" } ?? ""
+                chains.append("[\(current)][\(indexes[n]):v]overlay=0:0:format=rgb\(enable)[\(next)]")
+                current = next
+            }
+        }
+
         for (i, input) in inputs.enumerated() {
             let panel = plan.panels[i]
             let pw = Int(panel.width)
@@ -222,6 +269,8 @@ enum FFmpegGraph {
             var chain = plan.animated ? "[\(i):v]fps=\(fps)," : "[\(i):v]"
             if layout == .sequence {
                 chain += "scale=\(pw):\(ph):force_original_aspect_ratio=decrease:flags=lanczos,pad=\(pw):\(ph):(ow-iw)/2:(oh-ih)/2:color=black,"
+            } else if !input.info.animated, plan.animated {
+                chain += movement(motion, width: pw, height: ph, fps: fps, duration: plan.duration)
             } else {
                 chain += "scale=\(pw):\(ph):flags=lanczos,"
             }
@@ -231,12 +280,8 @@ enum FFmpegGraph {
                 let frames = Int((length * f).rounded(.up)) + 1
                 chain += ",loop=loop=-1:size=\(frames):start=0,trim=duration=\(seconds(plan.duration)),setpts=N/(\(fps)*TB)"
             }
-            if let o = overlayIndex[i] {
-                chains.append(chain + "[p\(i)]")
-                chains.append("[p\(i)][\(o):v]overlay=0:0:format=rgb[q\(i)]")
-            } else {
-                chains.append(chain + "[q\(i)]")
-            }
+            chains.append(chain + "[p\(i)]")
+            layer("p\(i)", panelOverlays[i], panelIndexes[i], into: "q\(i)")
         }
         let streams = inputs.indices.map { "[q\($0)]" }.joined()
         switch layout {
@@ -250,8 +295,8 @@ enum FFmpegGraph {
             chains.append("[\(last)]pad=\(Int(plan.width)):\(Int(plan.height)):0:\(Int(plan.bar)):color=white[padded]")
             last = "padded"
         }
-        if let g = globalIndex {
-            chains.append("[\(last)][\(g):v]overlay=0:0:format=rgb[captioned]")
+        if !globalOverlays.isEmpty {
+            layer(last, globalOverlays, globalIndexes, into: "captioned")
             last = "captioned"
         }
 
@@ -273,6 +318,24 @@ enum FFmpegGraph {
         return args
     }
 
+    static func movement(_ motion: Motion, width: Int, height: Int, fps: Int, duration: Double) -> String {
+        switch motion {
+        case .zoom:
+            // zoompan places its window on whole pixels, so it works on a 4x copy to keep the push smooth.
+            let pushFrames = max(1, Int((duration * Double(fps) * 0.7).rounded()))
+            return "scale=\(width * 4):\(height * 4):flags=lanczos,"
+                + "zoompan=z='1+0.12*(1-pow(1-min(on/\(pushFrames),1),3))':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2'"
+                + ":d=1:s=\(width)x\(height):fps=\(fps),"
+        case .shake:
+            let w = Int(even(CGFloat(width) * 1.06))
+            let h = Int(even(CGFloat(height) * 1.06))
+            return "scale=\(w):\(h):flags=lanczos,"
+                + "crop=\(width):\(height):'(iw-ow)/2+(random(1)-0.5)*(iw-ow)':'(ih-oh)/2+(random(2)-0.5)*(ih-oh)',"
+        case .none, .reveal:
+            return "scale=\(width):\(height):flags=lanczos,"
+        }
+    }
+
     static func seconds(_ value: Double) -> String { String(format: "%.3f", value) }
 }
 
@@ -292,8 +355,17 @@ public enum Trim {
 }
 
 extension Library {
-    public func make(_ request: MakeRequest) async throws -> MakeResult {
-        let started = Date()
+    private struct Prepared {
+        let inputs: [RenderInput]
+        let style: CaptionStyle
+        let templated: Int?
+        let hasText: Bool
+        let barText: String?
+        let width: Int
+        let hold: Double?
+    }
+
+    private func prepare(_ request: MakeRequest) async throws -> Prepared {
         guard !request.ids.isEmpty else { throw MemeError("Name at least one item to make a meme from.") }
         if request.layout == .single, request.ids.count > 1 {
             throw MemeError("The single layout takes one item; use side, stack or sequence for \(request.ids.count).")
@@ -319,13 +391,46 @@ extension Library {
         if request.labels.count > inputs.count {
             throw MemeError("Got \(request.labels.count) labels for \(inputs.count) items.")
         }
+        let hasText = request.captions.contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
 
-        let width = request.width ?? (request.layout == .side ? config.width * 3 / 2 : config.width)
+        var hold: Double?
+        if request.motion != .none {
+            if let moving = inputs.first(where: { $0.info.animated }) {
+                throw MemeError("\(moving.item.id) already moves; motion is for still pictures.")
+            }
+            if request.layout == .sequence { throw MemeError("Motion works with the single, side and stack layouts.") }
+            if request.motion == .reveal, !hasText { throw MemeError("Reveal shows the captions one at a time; add a caption.") }
+            hold = request.motion.duration(steps: Self.revealSteps(request.captions, style: style).count)
+        }
+        return Prepared(
+            inputs: inputs, style: style, templated: templated, hasText: hasText,
+            barText: style == .bar && hasText ? request.captions.joined(separator: "\n") : nil,
+            width: request.width ?? (request.layout == .side ? config.width * 3 / 2 : config.width), hold: hold
+        )
+    }
+
+    /// The order captions appear in when revealed, by caption index. Bar and subtitle draw every caption as one block, so they appear together.
+    static func revealSteps(_ captions: [String], style: CaptionStyle) -> [Int: Int] {
+        let shown = captions.indices.filter { !captions[$0].trimmingCharacters(in: .whitespaces).isEmpty }
+        if style == .bar || style == .subtitle { return shown.isEmpty ? [:] : [0: 0] }
+        return Dictionary(uniqueKeysWithValues: shown.enumerated().map { ($1, $0) })
+    }
+
+    /// Also saves the index and records the result in status.json as the last one made.
+    public func makeAndSave(_ request: MakeRequest) async throws -> MakeResult {
+        let result = try await make(request)
+        try save()
+        try StatusStore(url: paths.status).update { $0.lastMade = result.id }
+        return result
+    }
+
+    public func make(_ request: MakeRequest) async throws -> MakeResult {
+        let started = Date()
+        let prepared = try await prepare(request)
+        let inputs = prepared.inputs
         let fps = request.fps ?? config.fps
         let maxBytes = Int((request.maxMB ?? config.maxMB) * 1_000_000)
         let maxSeconds = request.maxSeconds ?? config.maxSeconds
-        let hasText = request.captions.contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-        let barText = style == .bar && hasText ? request.captions.joined(separator: "\n") : nil
 
         let id = uniqueID(prefix: "m-")
         let work = paths.work.appending(path: id)
@@ -340,15 +445,14 @@ extension Library {
         ]
         var outcome: (plan: Plan, file: URL, mp4: URL?, bytes: Int, fps: Int?)?
         for step in ladder {
-            let plan = Planner.plan(layout: request.layout, inputs: inputs, width: Int(Double(width) * step.scale),
-                                    maxSeconds: maxSeconds, barText: barText)
-            let overlays = try renderOverlays(plan: plan, inputs: inputs, style: style, request: request,
-                                              templated: templated, hasText: hasText, work: work)
+            let plan = Planner.plan(layout: request.layout, inputs: inputs, width: Int(Double(prepared.width) * step.scale),
+                                    maxSeconds: maxSeconds, barText: prepared.barText, hold: prepared.hold)
+            let overlays = try renderOverlays(plan: plan, prepared: prepared, request: request, work: work)
             if !plan.animated {
                 let png = made.appending(path: "\(id).png")
                 try Shell.run("ffmpeg", FFmpegGraph.arguments(
                     plan: plan, layout: request.layout, inputs: inputs, panelOverlays: overlays.panels,
-                    globalOverlay: overlays.global, fps: 1, outputs: .init(png: png)
+                    globalOverlays: overlays.global, fps: 1, outputs: .init(png: png)
                 ))
                 guard FileManager.default.fileExists(atPath: png.path) else { throw MemeError("ffmpeg wrote no picture for \(id).") }
                 outcome = (plan, png, nil, try fileSize(png), nil)
@@ -361,7 +465,7 @@ extension Library {
             let mp4 = made.appending(path: "\(id).mp4")
             try Shell.run("ffmpeg", FFmpegGraph.arguments(
                 plan: plan, layout: request.layout, inputs: inputs, panelOverlays: overlays.panels,
-                globalOverlay: overlays.global, fps: step.fps, outputs: .init(frames: frames, mp4: mp4)
+                globalOverlays: overlays.global, motion: request.motion, fps: step.fps, outputs: .init(frames: frames, mp4: mp4)
             ))
             let frameFiles = try FileManager.default.contentsOfDirectory(atPath: frames.path)
                 .filter { $0.hasSuffix(".png") }.sorted().map { frames.appending(path: $0).path }
@@ -383,10 +487,11 @@ extension Library {
             tags: Array(Set(inputs.flatMap(\.item.tags))).sorted(),
             attribution: attributions.isEmpty ? nil : attributions.joined(separator: "; "),
             made: MadeInfo(
-                inputs: request.ids, captions: request.captions, labels: request.labels, style: style.rawValue,
+                inputs: request.ids, captions: request.captions, labels: request.labels, style: prepared.style.rawValue,
                 layout: request.layout.rawValue, gif: outcome.plan.animated ? relative : nil,
                 mp4: outcome.mp4.map { "Made/\($0.lastPathComponent)" }, png: outcome.plan.animated ? nil : relative,
-                bytes: outcome.bytes, fps: outcome.fps, width: Int(outcome.plan.width), overLimit: outcome.bytes > maxBytes
+                bytes: outcome.bytes, fps: outcome.fps, width: Int(outcome.plan.width), overLimit: outcome.bytes > maxBytes,
+                motion: request.motion == .none ? nil : request.motion.rawValue
             )
         )
         item.vibe = inputs.compactMap(\.item.vibe).first
@@ -403,30 +508,77 @@ extension Library {
         )
     }
 
-    private func renderOverlays(plan: Plan, inputs: [RenderInput], style: CaptionStyle, request: MakeRequest,
-                                templated: Int?, hasText: Bool, work: URL) throws -> (panels: [URL?], global: URL?) {
-        var panels: [URL?] = Array(repeating: nil, count: inputs.count)
-        for i in inputs.indices {
-            let size = plan.panels[i].size
-            var blocks: [TextBlock] = []
-            if style == .template, i == templated, hasText {
-                blocks += try Captions.templateBlocks(boxes: inputs[i].item.boxes, captions: request.captions, panel: size)
-            }
-            if i < request.labels.count, !request.labels[i].isEmpty {
-                blocks.append(Captions.labelBlock(request.labels[i], panel: size))
-            }
-            guard !blocks.isEmpty else { continue }
-            let url = work.appending(path: "panel\(i)-\(Int(size.width)).png")
-            try CaptionRenderer.render(size: size, blocks: blocks, to: url)
-            panels[i] = url
+    /// Lays out the meme and draws its captions without running ffmpeg, fast enough to follow typing.
+    public func preview(_ request: MakeRequest) async throws -> MakePreview {
+        var still = request
+        still.motion = .none
+        let prepared = try await prepare(still)
+        let plan = Planner.plan(layout: request.layout, inputs: prepared.inputs, width: prepared.width,
+                                maxSeconds: request.maxSeconds ?? config.maxSeconds, barText: prepared.barText)
+        let folder = paths.work.appending(path: "previews")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let stale = Date().addingTimeInterval(-300)
+        for old in (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        where ((try? old.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast) < stale {
+            try? FileManager.default.removeItem(at: old)
         }
-        guard style != .template, hasText else { return (panels, nil) }
-        let url = work.appending(path: "global-\(Int(plan.width)).png")
-        try CaptionRenderer.render(
-            size: CGSize(width: plan.width, height: plan.height), bar: plan.bar,
-            blocks: try Captions.blocks(style: style, captions: request.captions, plan: plan), to: url
-        )
-        return (panels, url)
+
+        let panels = plan.panels.map { $0.offsetBy(dx: 0, dy: plan.bar) }
+        var blocks: [TextBlock] = []
+        // A sequence shows one item at a time in the same place, so the preview shows the first.
+        for (i, panel) in panels.enumerated() where request.layout != .sequence || i == 0 {
+            let drawn = try panelBlocks(i, size: panel.size, prepared: prepared, request: request)
+            for block in drawn.captions + drawn.labels {
+                var moved = block
+                moved.box = block.box.offsetBy(dx: panel.minX, dy: panel.minY)
+                blocks.append(moved)
+            }
+        }
+        if prepared.style != .template, prepared.hasText {
+            blocks += try Captions.blocks(style: prepared.style, captions: request.captions, plan: plan)
+        }
+        let url = folder.appending(path: "\(UUID().uuidString).png")
+        let canvas = CGSize(width: plan.width, height: plan.height)
+        try CaptionRenderer.render(size: canvas, bar: plan.bar, blocks: blocks, to: url)
+        return MakePreview(canvas: canvas, bar: plan.bar, panels: panels, overlay: url)
     }
 
+    private func panelBlocks(_ i: Int, size: CGSize, prepared: Prepared, request: MakeRequest) throws -> (captions: [TextBlock], labels: [TextBlock]) {
+        let captions = prepared.style == .template && i == prepared.templated && prepared.hasText
+            ? try Captions.templateBlocks(boxes: prepared.inputs[i].item.boxes, captions: request.captions, panel: size) : []
+        let labels = i < request.labels.count && !request.labels[i].isEmpty ? [Captions.labelBlock(request.labels[i], panel: size)] : []
+        return (captions, labels)
+    }
+
+    private func renderOverlays(plan: Plan, prepared: Prepared, request: MakeRequest, work: URL) throws -> (panels: [[Overlay]], global: [Overlay]) {
+        let steps = request.motion == .reveal ? Self.revealSteps(request.captions, style: prepared.style) : nil
+        func draw(_ blocks: [TextBlock], size: CGSize, bar: CGFloat = 0, name: String, from: Double? = nil) throws -> Overlay {
+            let url = work.appending(path: "\(name)-\(Int(size.width)).png")
+            try CaptionRenderer.render(size: size, bar: bar, blocks: blocks, to: url)
+            return Overlay(url: url, from: from)
+        }
+        func layers(_ captionBlocks: [TextBlock], fixed: [TextBlock], size: CGSize, bar: CGFloat = 0, name: String) throws -> [Overlay] {
+            guard let steps else {
+                let all = fixed + captionBlocks
+                return all.isEmpty ? [] : [try draw(all, size: size, bar: bar, name: name)]
+            }
+            var overlays = fixed.isEmpty ? [] : [try draw(fixed, size: size, bar: bar, name: name)]
+            for (n, block) in captionBlocks.enumerated() {
+                guard let step = steps[n] else { continue }
+                overlays.append(try draw([block], size: size, bar: bar, name: "\(name)-r\(n)", from: Motion.revealStart(step)))
+            }
+            return overlays
+        }
+
+        var panels: [[Overlay]] = []
+        for i in prepared.inputs.indices {
+            let size = plan.panels[i].size
+            let drawn = try panelBlocks(i, size: size, prepared: prepared, request: request)
+            panels.append(try layers(drawn.captions, fixed: drawn.labels, size: size, name: "panel\(i)"))
+        }
+        guard prepared.style != .template, prepared.hasText else { return (panels, []) }
+        let blocks = try Captions.blocks(style: prepared.style, captions: request.captions, plan: plan)
+        let global = try layers(blocks, fixed: [], size: CGSize(width: plan.width, height: plan.height), bar: plan.bar, name: "global")
+        return (panels, global)
+    }
 }

@@ -2,20 +2,26 @@ import AppKit
 
 @MainActor
 enum Mark {
-    /// Drawn on an 18 pt canvas, y up.
+    /// The flask's glass, open at the neck, on an 18 pt canvas with y up. The lip across the neck is drawn separately.
+    private static func glass(scale s: CGFloat) -> NSBezierPath {
+        func p(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: x * s, y: y * s) }
+        let glass = NSBezierPath()
+        glass.move(to: p(7.3, 16))
+        glass.line(to: p(7.3, 11.4))
+        glass.line(to: p(3.2, 4.6))
+        glass.curve(to: p(4.6, 2.2), controlPoint1: p(2.6, 3.6), controlPoint2: p(3.3, 2.2))
+        glass.line(to: p(13.4, 2.2))
+        glass.curve(to: p(14.8, 4.6), controlPoint1: p(14.7, 2.2), controlPoint2: p(15.4, 3.6))
+        glass.line(to: p(10.7, 11.4))
+        glass.line(to: p(10.7, 16))
+        glass.move(to: p(6.2, 16))
+        glass.line(to: p(11.8, 16))
+        return glass
+    }
+
     private static func strokes(scale s: CGFloat, waiting: Bool) -> (outline: NSBezierPath, liquid: NSBezierPath, details: NSBezierPath) {
         func p(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: x * s, y: y * s) }
-        let outline = NSBezierPath()
-        outline.move(to: p(6.2, 16))
-        outline.line(to: p(11.8, 16))
-        outline.move(to: p(7.3, 16))
-        outline.line(to: p(7.3, 11.4))
-        outline.line(to: p(3.2, 4.6))
-        outline.curve(to: p(4.6, 2.2), controlPoint1: p(2.6, 3.6), controlPoint2: p(3.3, 2.2))
-        outline.line(to: p(13.4, 2.2))
-        outline.curve(to: p(14.8, 4.6), controlPoint1: p(14.7, 2.2), controlPoint2: p(15.4, 3.6))
-        outline.line(to: p(10.7, 11.4))
-        outline.line(to: p(10.7, 16))
+        let outline = glass(scale: s)
 
         let liquid = NSBezierPath()
         liquid.move(to: p(4.9, 7.4))
@@ -59,27 +65,48 @@ enum Mark {
 
     static func appIcon() -> NSImage {
         NSImage(size: NSSize(width: 1024, height: 1024), flipped: false) { _ in
-            let tile = NSRect(x: 100, y: 100, width: 824, height: 824)
-            let shape = NSBezierPath(roundedRect: tile, xRadius: 185, yRadius: 185)
-            NSGradient(starting: NSColor(white: 0.22, alpha: 1), ending: NSColor(white: 0.07, alpha: 1))?.draw(in: shape, angle: -90)
-            let scale: CGFloat = 30
-            let size = 18 * scale
-            NSGraphicsContext.current?.cgContext.translateBy(x: 512 - size / 2, y: 512 - size / 2 - 10)
-            let (outline, liquid, details) = strokes(scale: scale, waiting: false)
-            let fill = NSBezierPath()
-            fill.append(liquid)
-            fill.line(to: NSPoint(x: 14.2 * scale, y: 5.2 * scale))
-            fill.line(to: NSPoint(x: 13.4 * scale, y: 2.2 * scale))
-            fill.line(to: NSPoint(x: 4.6 * scale, y: 2.2 * scale))
-            fill.line(to: NSPoint(x: 3.8 * scale, y: 5.2 * scale))
-            fill.close()
+            func hex(_ v: Int, _ a: CGFloat = 1) -> NSColor {
+                NSColor(srgbRed: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255, blue: CGFloat(v & 0xFF) / 255, alpha: a)
+            }
+            let tile = NSBezierPath(roundedRect: NSRect(x: 100, y: 100, width: 824, height: 824), xRadius: 185, yRadius: 185)
+            NSGradient(starting: hex(0x0E0F12), ending: hex(0x2A2D33))?.draw(in: tile, angle: 90)
+
+            let s: CGFloat = 30
+            func p(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: x * s, y: y * s) }
+            func bubble(_ x: CGFloat, _ y: CGFloat, _ r: CGFloat, _ color: NSColor) {
+                color.setFill()
+                NSBezierPath(ovalIn: NSRect(x: (x - r) * s, y: (y - r) * s, width: 2 * r * s, height: 2 * r * s)).fill()
+            }
+            NSGraphicsContext.current?.cgContext.translateBy(x: 512 - 9 * s, y: 512 - 9 * s - 40)
+
+            let outline = glass(scale: s)
+            outline.lineWidth = 1.5 * s
+            outline.lineCapStyle = .round
+            outline.lineJoinStyle = .round
+
+            let liquid = NSBezierPath()
+            liquid.move(to: p(2, 7.6))
+            liquid.curve(to: p(9, 7.6), controlPoint1: p(4.5, 8.7), controlPoint2: p(6.5, 6.5))
+            liquid.curve(to: p(16, 7.6), controlPoint1: p(11.5, 8.7), controlPoint2: p(13.5, 6.5))
+            liquid.line(to: p(16, 0))
+            liquid.line(to: p(2, 0))
+            liquid.close()
+
+            let green = hex(0xB6FF5C)
             NSGraphicsContext.saveGraphicsState()
+            // Clipping fills the glass: the lip's stray segment encloses no area, and the open neck closes itself.
             outline.addClip()
-            NSColor(white: 1, alpha: 0.22).set()
-            fill.fill()
+            NSGradient(starting: green, ending: hex(0x22C55E))?.draw(in: liquid, angle: -90)
+            bubble(7.2, 5.0, 0.75, hex(0xFFFFFF, 0.55))
+            bubble(10.4, 3.9, 0.5, hex(0xFFFFFF, 0.45))
+            bubble(9.3, 9.4, 0.42, green)
             NSGraphicsContext.restoreGraphicsState()
-            NSColor.white.set()
-            [outline, liquid, details].forEach { $0.stroke() }
+            bubble(9.6, 18.0, 0.62, green)
+            bubble(11.6, 20.0, 0.9, green)
+            bubble(8.4, 21.2, 0.45, green)
+
+            NSColor.white.setStroke()
+            outline.stroke()
             return true
         }
     }

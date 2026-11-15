@@ -259,7 +259,10 @@ public final class Picker: @unchecked Sendable {
     public static func recipe(_ made: MadeInfo) -> String {
         let layouts = ["single": "One picture", "side": "Side by side", "stack": "Stacked", "sequence": "One after another"]
         let styles = ["classic": "classic captions", "bar": "caption bar", "subtitle": "subtitle", "template": "template boxes"]
-        return "\(layouts[made.layout] ?? made.layout), \(styles[made.style] ?? made.style)"
+        let motions = ["reveal": "captions one at a time", "zoom": "slow zoom", "shake": "shaking"]
+        var parts = [layouts[made.layout] ?? made.layout, styles[made.style] ?? made.style]
+        if let motion = made.motion { parts.append(motions[motion] ?? motion) }
+        return parts.joined(separator: ", ")
     }
 
     static func parseRange(_ header: String, size: Int) -> (Int, Int)? {

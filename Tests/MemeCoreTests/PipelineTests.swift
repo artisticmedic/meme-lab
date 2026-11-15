@@ -70,6 +70,41 @@ struct PipelineTests {
         #expect(result.mp4 == nil)
     }
 
+    @Test func motionTurnsAStillIntoAGif() async throws {
+        let (library, home) = try Self.library()
+        let still = try library.add(file: Self.still(in: home))
+        let reveal = try await library.make(MakeRequest(ids: [still.id], captions: ["top", "bottom"], motion: .reveal))
+        #expect(reveal.file.hasSuffix(".gif"))
+        #expect(abs(try Media.probe(URL(fileURLWithPath: reveal.mp4!)).duration - 3.7) < 0.2)
+        #expect(library.items[reveal.id]?.made?.motion == "reveal")
+
+        for motion in [Motion.zoom, .shake] {
+            let result = try await library.make(MakeRequest(ids: [still.id], captions: ["moving"], motion: motion))
+            #expect(try Media.probe(URL(fileURLWithPath: result.file)).frames > 10, "\(motion)")
+        }
+    }
+
+    @Test func motionIsRefusedWhereItCannotWork() async throws {
+        let (library, home) = try Self.library()
+        let still = try library.add(file: Self.still(in: home))
+        let clip = try library.add(file: Self.clip(in: home))
+        await #expect(throws: MemeError.self) { try await library.make(MakeRequest(ids: [clip.id], captions: ["a"], motion: .zoom)) }
+        await #expect(throws: MemeError.self) { try await library.make(MakeRequest(ids: [still.id, still.id], layout: .sequence, motion: .zoom)) }
+        await #expect(throws: MemeError.self) { try await library.make(MakeRequest(ids: [still.id], motion: .reveal)) }
+    }
+
+    @Test func previewDrawsCaptionsWithoutRendering() async throws {
+        let (library, home) = try Self.library()
+        let still = try library.add(file: Self.still(in: home))
+        let preview = try await library.preview(MakeRequest(ids: [still.id, still.id], captions: ["a caption"], style: .bar, layout: .stack))
+        #expect(preview.bar > 0)
+        #expect(preview.panels.count == 2)
+        #expect(preview.panels[0].minY == preview.bar)
+        #expect(preview.canvas.height == preview.panels[1].maxY)
+        #expect(FileManager.default.fileExists(atPath: preview.overlay.path))
+        #expect(library.items.values.allSatisfy { $0.kind != .made })
+    }
+
     @Test func shrinksToFitTheLimit() async throws {
         let (library, home) = try Self.library()
         let clip = try library.add(file: Self.clip(in: home, seconds: 4, size: "640x480"))

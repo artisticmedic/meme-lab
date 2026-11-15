@@ -30,9 +30,11 @@ Every read prints JSON. Errors are one plain sentence on stderr. `meme <command>
    meme make s-1a2b3c4d -c "me watching CI spin" --style bar
    meme make fine s-1a2b3c4d --layout side --label "the plan" --label "the reality" --style classic -c "" -c "shipping friday"
    meme make s-1a2b3c4d fine --layout sequence --style subtitle -c "deploy at 4:59pm"
+   meme make drake -c "writing tests" -c "shipping on friday" --motion reveal
    ```
    - Styles: `template` uses the template's own boxes, one `-c` per box in order, following `howUsed`; it is the default for memegen templates. `classic` is Impact, top then bottom. `bar` is the white bar above a moving clip, the default for clips. `subtitle` sits at the bottom.
    - Layouts: `single`, `side`, `stack` and `sequence` (setup, then punchline). Up to four items.
+   - A template is a still picture and makes a PNG. `--motion` makes it a GIF: `reveal` shows the captions one at a time (good for two-panel formats), `zoom` pushes in slowly, `shake` shakes. Tim prefers GIFs, so use a motion unless he asks for a still. Motion only works on still items and not with `sequence`.
    - `--trim 0.5-2.5` keeps part of a moving item; repeat it per item.
    - Output stays under 8 MB by lowering frame rate and size. `overLimit: true` means it could not; try `--trim` or fewer items.
 5. **Show Tim the options.**

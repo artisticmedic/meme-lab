@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 public struct MediaInfo: Equatable, Sendable {
     public var width: Int
@@ -14,7 +15,18 @@ public enum Media {
     public static let extensions: Set<String> = ["gif", "png", "jpg", "jpeg", "webp", "mp4", "mov", "m4v"]
     public static let videoExtensions: Set<String> = ["mp4", "mov", "m4v"]
 
+    private static let probed = Mutex<[String: (modified: Date, info: MediaInfo)]>([:])
+
+    /// Remembers each file's answer until it changes on disk, because the Make preview probes on every keystroke.
     public static func probe(_ url: URL) throws -> MediaInfo {
+        let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+        if let known = probed.withLock({ $0[url.path] }), known.modified == modified { return known.info }
+        let info = try read(url)
+        probed.withLock { $0[url.path] = (modified, info) }
+        return info
+    }
+
+    private static func read(_ url: URL) throws -> MediaInfo {
         struct Probe: Decodable {
             struct Stream: Decodable {
                 let codec_type: String?

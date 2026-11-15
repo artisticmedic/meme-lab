@@ -78,6 +78,7 @@ public struct MadeInfo: Codable, Equatable, Sendable {
     public var fps: Int?
     public var width: Int
     public var overLimit: Bool
+    public var motion: String? = nil
 }
 
 public struct Item: Codable, Identifiable, Equatable, Sendable {

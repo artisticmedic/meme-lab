@@ -28,12 +28,19 @@ enum Renderer {
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
 
-        func library(_ shelf: Shelf) -> some View {
+        func library(_ shelf: Shelf, selecting: Bool = true) -> some View {
             model.stage(browse)
             let state = LibraryState()
             state.shelf = shelf
-            state.selection = model.items(.all, matching: "").prefix(1).map(\.id)
+            state.selection = selecting ? model.items(.all, matching: "").prefix(1).map(\.id) : []
             return LibraryView(state: state).environmentObject(model)
+        }
+
+        func make() -> some View {
+            let template = model.items(.templates, matching: "").first { $0.boxes.count == 2 && $0.example.count == 2 }
+            return MakeView(ids: template.map { [$0.id] } ?? [], items: template.map { [$0] } ?? [], captions: template?.example ?? []) {}
+                .environmentObject(model)
+                .background(Color(nsColor: .windowBackgroundColor))
         }
 
         var browse = model.store.load()
@@ -49,6 +56,8 @@ enum Renderer {
             ("panel-propose", NSSize(width: 320, height: panelHeight), { AnyView(panel(propose)) }),
             ("panel-pick", NSSize(width: 320, height: panelHeight), { AnyView(panel(pick)) }),
             ("library", NSSize(width: 1180, height: 760), { AnyView(library(.all)) }),
+            ("library-browse", NSSize(width: 1180, height: 760), { AnyView(library(.all, selecting: false)) }),
+            ("make", NSSize(width: 940, height: 620), { AnyView(make()) }),
             ("settings", NSSize(width: 1180, height: 760), { AnyView(library(.settings)) }),
         ]
         var failed = false

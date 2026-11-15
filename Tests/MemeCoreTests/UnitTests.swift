@@ -172,18 +172,35 @@ struct LayoutTests {
         let short = RenderInput(item: item, file: URL(fileURLWithPath: "/b.gif"), info: MediaInfo(width: 100, height: 100, duration: 1, frames: 10), trim: nil)
         let plan = Planner.plan(layout: .side, inputs: [long, short], width: 400, maxSeconds: 6, barText: nil)
         #expect(plan.duration == 4)
-        let args = FFmpegGraph.arguments(plan: plan, layout: .side, inputs: [long, short], panelOverlays: [nil, nil],
-                                         globalOverlay: nil, fps: 10, outputs: .init(frames: URL(fileURLWithPath: "/f"), mp4: URL(fileURLWithPath: "/o.mp4")))
+        let args = FFmpegGraph.arguments(plan: plan, layout: .side, inputs: [long, short], panelOverlays: [[], []],
+                                         globalOverlays: [], fps: 10, outputs: .init(frames: URL(fileURLWithPath: "/f"), mp4: URL(fileURLWithPath: "/o.mp4")))
         let graph = args[args.firstIndex(of: "-filter_complex")! + 1]
         #expect(graph.contains("hstack=inputs=2"))
         #expect(graph.components(separatedBy: "loop=loop=-1").count == 2)
 
         let still = RenderInput(item: item, file: URL(fileURLWithPath: "/c.png"), info: MediaInfo(width: 100, height: 100, duration: 0, frames: 1), trim: nil)
         let stillPlan = Planner.plan(layout: .single, inputs: [still], width: 400, maxSeconds: 6, barText: nil)
-        let stillArgs = FFmpegGraph.arguments(plan: stillPlan, layout: .single, inputs: [still], panelOverlays: [nil],
-                                              globalOverlay: nil, fps: 1, outputs: .init(png: URL(fileURLWithPath: "/o.png")))
+        let stillArgs = FFmpegGraph.arguments(plan: stillPlan, layout: .single, inputs: [still], panelOverlays: [[]],
+                                              globalOverlays: [], fps: 1, outputs: .init(png: URL(fileURLWithPath: "/o.png")))
         #expect(!stillArgs.joined(separator: " ").contains("fps="))
         #expect(stillArgs.contains("-frames:v"))
+    }
+
+    @Test func revealShowsCaptionsInOrderAndSkipsEmptyOnes() throws {
+        #expect(Library.revealSteps(["top", "", "third"], style: .template) == [0: 0, 2: 1])
+        #expect(Library.revealSteps(["one", "two"], style: .bar) == [0: 0])
+        #expect(Motion.reveal.duration(steps: 2) == 3.7)
+
+        let item = Item(id: "a", kind: .template, title: "a", source: "memegen", rights: Rights(caption: true, post: .personal))
+        let still = RenderInput(item: item, file: URL(fileURLWithPath: "/c.png"), info: MediaInfo(width: 100, height: 100, duration: 0, frames: 1), trim: nil)
+        let plan = Planner.plan(layout: .single, inputs: [still], width: 400, maxSeconds: 6, barText: nil, hold: 3.7)
+        let overlays = [Overlay(url: URL(fileURLWithPath: "/r0.png"), from: 0.7), Overlay(url: URL(fileURLWithPath: "/r1.png"), from: 1.7)]
+        let args = FFmpegGraph.arguments(plan: plan, layout: .single, inputs: [still], panelOverlays: [overlays], globalOverlays: [],
+                                         motion: .reveal, fps: 10, outputs: .init(frames: URL(fileURLWithPath: "/f")))
+        let graph = args[args.firstIndex(of: "-filter_complex")! + 1]
+        #expect(graph.contains("enable='gte(t,0.700)'"))
+        #expect(graph.contains("enable='gte(t,1.700)'[q0]"))
+        #expect(args.contains("-loop"))
     }
 
     @Test func captionsCheckTheirCount() throws {

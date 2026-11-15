@@ -53,6 +53,7 @@ struct SearchCommand: AsyncParsableCommand {
 extension Kind: ExpressibleByArgument {}
 extension CaptionStyle: ExpressibleByArgument {}
 extension Layout: ExpressibleByArgument {}
+extension Motion: ExpressibleByArgument {}
 
 struct Info: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
@@ -85,6 +86,7 @@ struct Make: AsyncParsableCommand {
         discussion: """
         Styles: classic (Impact, top and bottom), bar (white bar above), subtitle (bottom), template (memegen's own boxes).
         Layouts: single, side, stack, sequence. --label puts a short label on each panel, in item order.
+        Motion turns still pictures into a GIF: reveal (captions appear one at a time), zoom (a slow push in), shake.
         """
     )
     @Argument(help: "Item ids, in panel order.") var ids: [String]
@@ -92,6 +94,7 @@ struct Make: AsyncParsableCommand {
     @Option(help: "A label for each panel, in order.") var label: [String] = []
     @Option(help: "classic, bar, subtitle or template.") var style: CaptionStyle?
     @Option(help: "single, side, stack or sequence.") var layout: Layout?
+    @Option(help: "none, reveal, zoom or shake. Makes a GIF from still pictures.") var motion: Motion = .none
     @Option(help: "Seconds to keep from each moving item, like 0.4-2.9. Repeat per item.") var trim: [String] = []
     @Option(help: "Output width in pixels.") var width: Int?
     @Option(help: "Frames per second.") var fps: Int?
@@ -100,12 +103,10 @@ struct Make: AsyncParsableCommand {
 
     func run() async throws {
         let library = try Library.open()
-        let result = try await library.make(MakeRequest(
-            ids: ids, captions: caption, labels: label, style: style, layout: layout, trims: trim,
+        let result = try await library.makeAndSave(MakeRequest(
+            ids: ids, captions: caption, labels: label, style: style, layout: layout, motion: motion, trims: trim,
             width: width, fps: fps, maxMB: maxMB, maxSeconds: maxSeconds
         ))
-        try library.save()
-        try StatusStore(url: library.paths.status).update { $0.lastMade = result.id }
         try output(result)
     }
 }

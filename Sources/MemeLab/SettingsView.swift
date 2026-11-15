@@ -7,65 +7,72 @@ struct SettingsView: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Settings").font(.system(size: 22, weight: .semibold)).padding(.leading, 6).padding(.bottom, 8)
-                if let problem = model.configProblem {
-                    Text(problem).font(.system(size: 13)).padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.07)))
-                }
-                if let error = model.error {
-                    HStack(alignment: .top) {
-                        Text(error).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
-                        Spacer()
-                        IconButton(symbol: "xmark", label: "Dismiss") { model.error = nil }
-                    }
-                    .padding(.leading, 12)
+        VStack(spacing: 0) {
+            TopBar {
+                Text("Settings").font(.system(size: 15, weight: .semibold))
+                    .padding(.leading, 30).frame(maxWidth: 640, alignment: .leading).frame(maxWidth: .infinity)
+            }
+            ScrollView { content }
+        }
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let problem = model.configProblem {
+                Text(problem).font(.system(size: 13)).padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.07)))
+            }
+            if let error = model.error {
+                HStack(alignment: .top) {
+                    Text(error).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    IconButton(symbol: "xmark", label: "Dismiss") { model.error = nil }
                 }
-                SectionLabel(text: "Library")
-                Card {
-                    Row(title: "Library folder", caption: "\(libraryFolder). Choosing another folder moves your saved and made files there.") {
-                        Button("Choose…", action: chooseFolder).buttonStyle(PillButtonStyle())
-                    }
-                    RowDivider()
-                    Row(title: "Templates", caption: templatesCaption) {
-                        Button(model.syncing ? "Refreshing…" : "Refresh Now") { model.sync() }
-                            .buttonStyle(PillButtonStyle())
-                            .disabled(model.syncing)
-                    }
+                .padding(.leading, 12)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.07)))
+            }
+            SectionLabel(text: "Library")
+            Card {
+                Row(title: "Library folder", caption: "\(libraryFolder). Choosing another folder moves your saved and made files there.") {
+                    Button("Choose…", action: chooseFolder).buttonStyle(PillButtonStyle())
                 }
-                SectionLabel(text: "Making memes").padding(.top, 10)
-                Card {
-                    NumberRow(title: "Largest GIF", caption: "Frame rate, then size, drop until the GIF fits.", unit: "MB", key: "maxMB", value: model.config.maxMB.formatted())
-                    RowDivider()
-                    NumberRow(title: "Width", caption: nil, unit: "px", key: "width", value: "\(model.config.width)")
-                    RowDivider()
-                    NumberRow(title: "Frame rate", caption: nil, unit: "fps", key: "fps", value: "\(model.config.fps)")
-                    RowDivider()
-                    NumberRow(title: "Longest clip", caption: "Longer clips are cut to this.", unit: "s", key: "maxSeconds", value: model.config.maxSeconds.formatted())
-                }
-                SectionLabel(text: "Panel").padding(.top, 10)
-                Card {
-                    LoginRow()
-                    RowDivider()
-                    Row(title: "Tiles always move", caption: "Otherwise a tile moves while the pointer is on it.") {
-                        Toggle("", isOn: Binding(get: { model.config.animateAlways }, set: { model.setting("animateAlways", String($0)) }))
-                            .toggleStyle(.switch).labelsHidden()
-                    }
-                    RowDivider()
-                    AgentCommandRow()
-                }
-                SectionLabel(text: "Command line").padding(.top, 10)
-                Card {
-                    CommandLinkRow()
+                RowDivider()
+                Row(title: "Templates", caption: templatesCaption) {
+                    Button(model.syncing ? "Refreshing…" : "Refresh Now") { model.sync() }
+                        .buttonStyle(PillButtonStyle())
+                        .disabled(model.syncing)
                 }
             }
-            .padding(24)
-            .frame(maxWidth: 640, alignment: .leading)
-            .frame(maxWidth: .infinity)
+            SectionLabel(text: "Making memes").padding(.top, 10)
+            Card {
+                NumberRow(title: "Largest GIF", caption: "Frame rate, then size, drop until the GIF fits.", unit: "MB", key: "maxMB", value: model.config.maxMB.formatted())
+                RowDivider()
+                NumberRow(title: "Width", caption: nil, unit: "px", key: "width", value: "\(model.config.width)")
+                RowDivider()
+                NumberRow(title: "Frame rate", caption: nil, unit: "fps", key: "fps", value: "\(model.config.fps)")
+                RowDivider()
+                NumberRow(title: "Longest clip", caption: "Longer clips are cut to this.", unit: "s", key: "maxSeconds", value: model.config.maxSeconds.formatted())
+            }
+            SectionLabel(text: "Panel").padding(.top, 10)
+            Card {
+                LoginRow()
+                RowDivider()
+                Row(title: "Tiles always move", caption: "Otherwise a tile moves while the pointer is on it.") {
+                    Toggle("", isOn: Binding(get: { model.config.animateAlways }, set: { model.setting("animateAlways", String($0)) }))
+                        .toggleStyle(.switch).labelsHidden()
+                }
+                RowDivider()
+                AgentCommandRow()
+            }
+            SectionLabel(text: "Command line").padding(.top, 10)
+            Card {
+                CommandLinkRow()
+            }
         }
+        .padding(.horizontal, 24).padding(.bottom, 24).padding(.top, 4)
+        .frame(maxWidth: 640, alignment: .leading)
+        .frame(maxWidth: .infinity)
     }
 
     private var libraryFolder: String {

@@ -10,6 +10,7 @@ final class LibraryState: ObservableObject {
     /// In click order; the last one fills the detail pane.
     @Published var selection: [String] = []
     @Published var removing: [String]?
+    @Published var making: [String]?
     @Published var naming = false
     @Published var newCollection = ""
     @Published var dropTargeted = false
@@ -29,12 +30,21 @@ struct LibraryView: View {
                 SettingsView()
             } else {
                 main
-                Divider()
-                DetailPane(state: state).frame(width: 330)
+                if !state.selection.isEmpty {
+                    Divider()
+                    DetailPane(state: state).frame(width: 340).transition(.move(edge: .trailing))
+                }
             }
         }
-        .frame(minWidth: 1040, minHeight: 640)
+        .animation(.easeOut(duration: 0.18), value: state.selection.isEmpty)
+        .onChange(of: model.items) { state.selection.removeAll { model.item($0) == nil } }
+        .ignoresSafeArea(.container, edges: .top)
+        .frame(minWidth: 900, minHeight: 600)
         .background(Surface.page)
+        .sheet(isPresented: Binding(get: { state.making != nil }, set: { if !$0 { state.making = nil } })) {
+            let ids = state.making ?? []
+            MakeView(ids: ids, items: ids.compactMap(model.item)) { state.making = nil }.environmentObject(model)
+        }
         .onDrop(of: [.fileURL], isTargeted: $state.dropTargeted) { providers in
             Task { model.add(await Self.fileURLs(providers), recording: false) }
             return true
@@ -83,14 +93,7 @@ struct LibraryView: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 9) {
-                Image(nsImage: Mark.header(size: 26))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Meme Lab").font(.system(size: 15, weight: .semibold))
-                    Text(model.statusLine).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
-                }
-            }
-            .padding(.horizontal, 10).padding(.top, 40).padding(.bottom, 14)
+            Color.clear.frame(height: topBarHeight).background(WindowDragArea()).padding(.horizontal, -8)
             sectionLabel("Library")
             ForEach(Shelf.main, id: \.self) { shelf in sidebarRow(shelf, title: shelf == .new ? "New and rising" : shelf.title) }
             sectionLabel("Collections").padding(.top, 12)
@@ -113,6 +116,10 @@ struct LibraryView: View {
             .disabled(state.selection.isEmpty)
             .help(state.selection.isEmpty ? "Select memes first; they go into the new collection." : "Make a collection from the selected memes.")
             Spacer()
+            if let notice = model.notice {
+                Text(notice).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 10).padding(.bottom, 6)
+            }
             sidebarRow(.settings, title: "Settings")
                 .padding(.bottom, 10)
         }
@@ -146,8 +153,8 @@ struct LibraryView: View {
     private var main: some View {
         let items = model.items(state.shelf, matching: state.query)
         return VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                SearchField(text: $state.query, focus: $searchFocused)
+            TopBar {
+                SearchField(text: $state.query, prompt: "Search \(model.count(state.shelf)) memes by name or feeling", focus: $searchFocused)
                 Menu {
                     Button("Add Files…") { addFiles(recording: false) }
                     Button("Add My Own Recordings…") { addFiles(recording: true) }
@@ -161,7 +168,6 @@ struct LibraryView: View {
                     Button("Remove All…") { state.removing = items.map(\.id) }.buttonStyle(PillButtonStyle())
                 }
             }
-            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 10)
             if let error = model.error {
                 HStack(alignment: .top) {
                     Text(error).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
@@ -172,26 +178,36 @@ struct LibraryView: View {
                 .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.07)))
                 .padding(.horizontal, 16).padding(.bottom, 8)
             }
-            ScrollView {
-                if items.isEmpty {
-                    Text(emptyText).font(.system(size: 15)).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                        .frame(maxWidth: 360).padding(.top, 80)
-                }
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 168, maximum: 260), spacing: 10, alignment: .top)], spacing: 10) {
-                    ForEach(items) { item in
-                        Tile(item: item, picked: model.status.picks.contains(item.id), selected: state.selection.contains(item.id), height: 128)
-                            .onTapGesture(count: 2) { model.togglePick(item.id) }
-                            .simultaneousGesture(TapGesture().modifiers(.command).onEnded { toggleSelection(item.id) })
-                            .onTapGesture { state.selection = [item.id]; gridFocused = true }
-                            .contextMenu {
-                                Button(model.status.picks.contains(item.id) ? "Unpick" : "Pick") { model.togglePick(item.id) }
-                                Button("Copy") { Task { await model.copy(item) } }
-                                Divider()
-                                Button(item.kind == .template ? "Hide…" : "Remove…") { state.removing = targets(item.id) }
+            GeometryReader { viewport in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        if items.isEmpty {
+                            Text(emptyText).font(.system(size: 15)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                                .frame(maxWidth: 360).padding(.top, 80)
+                        }
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 168, maximum: 260), spacing: 10, alignment: .top)], spacing: 10) {
+                            ForEach(items) { item in
+                                Tile(item: item, picked: model.status.picks.contains(item.id), selected: state.selection.contains(item.id), height: 128)
+                                    .onTapGesture(count: 2) { model.togglePick(item.id) }
+                                    .simultaneousGesture(TapGesture().modifiers(.command).onEnded { toggleSelection(item.id) })
+                                    .onTapGesture { state.selection = [item.id]; gridFocused = true }
+                                    .contextMenu {
+                                        if canMake(targets(item.id)) {
+                                    Button("Make GIF…") { state.making = targets(item.id) }
+                                }
+                                        Button(model.status.picks.contains(item.id) ? "Unpick" : "Pick") { model.togglePick(item.id) }
+                                        Button("Copy") { Task { await model.copy(item) } }
+                                        Divider()
+                                        Button(item.kind == .template ? "Hide…" : "Remove…") { state.removing = targets(item.id) }
+                                    }
                             }
+                        }
+                        .padding(.horizontal, 16).padding(.bottom, 16)
                     }
+                    .frame(minHeight: viewport.size.height, alignment: .top)
+                    .contentShape(Rectangle())
+                    .onTapGesture { state.selection = [] }
                 }
-                .padding(.horizontal, 16).padding(.bottom, 16)
             }
             .focusable()
             .focusEffectDisabled()
@@ -199,6 +215,11 @@ struct LibraryView: View {
             .onKeyPress(keys: [.delete, .deleteForward]) { _ in
                 guard !state.selection.isEmpty else { return .ignored }
                 state.removing = state.selection
+                return .handled
+            }
+            .onKeyPress(.escape) {
+                guard !state.selection.isEmpty else { return .ignored }
+                state.selection = []
                 return .handled
             }
         }
@@ -209,7 +230,7 @@ struct LibraryView: View {
         if !state.query.isEmpty { return "Nothing matches “\(state.query)”." }
         switch state.shelf {
         case .clips: return "No clips yet. Drop GIFs, images or videos here, or click Add."
-        case .made: return "Nothing made yet. Ask an agent for a meme, and what it makes lands here."
+        case .made: return "Nothing made yet. Click Make GIF on any template, or ask an agent for a meme."
         case .new: return "Nothing new in the last two weeks."
         case .all, .templates: return "The library is empty. Refresh templates in Settings."
         default: return "Nothing here."
@@ -217,6 +238,8 @@ struct LibraryView: View {
     }
 
     private func targets(_ id: String) -> [String] { state.selection.contains(id) ? state.selection : [id] }
+
+    private func canMake(_ ids: [String]) -> Bool { DetailPane.canMake(ids, model: model) }
 
     private func toggleSelection(_ id: String) {
         if let index = state.selection.firstIndex(of: id) { state.selection.remove(at: index) } else { state.selection.append(id) }
@@ -244,30 +267,36 @@ struct DetailPane: View {
     @State private var newCollection = ""
 
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
+            TopBar {
+                Spacer()
+                IconButton(symbol: "xmark", label: "Close") { state.selection = [] }
+                    .padding(.trailing, -8)
+            }
             if state.selection.count > 1 {
                 several
             } else if let id = state.selection.last, let item = model.item(id) {
                 detail(item)
-            } else {
-                Text("Select a meme to see how it is used.").font(.system(size: 15)).foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center).padding(30)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            Spacer(minLength: 0)
         }
     }
 
     private var several: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("\(state.selection.count) selected").font(.system(size: 15, weight: .semibold))
+            Text("\(state.selection.count) selected").font(.system(size: 17, weight: .semibold))
             HStack(spacing: 8) {
-                Button("Pick") { model.pick(state.selection) }
-                    .buttonStyle(PillButtonStyle(prominent: true))
+                if Self.canMake(state.selection, model: model) {
+                    Button("Make GIF") { state.making = state.selection }.buttonStyle(PillButtonStyle(prominent: true))
+                }
+                Button("Pick") { model.pick(state.selection) }.buttonStyle(PillButtonStyle())
                 Button("Remove…") { state.removing = state.selection }.buttonStyle(PillButtonStyle())
             }
-            Spacer()
+            if state.selection.count > 4 {
+                Text("Select up to four to make one GIF from them.").font(.system(size: 13)).foregroundStyle(.secondary)
+            }
         }
-        .padding(18)
+        .padding(.horizontal, 18)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -282,14 +311,15 @@ struct DetailPane: View {
                     Text(item.title).font(.system(size: 17, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
                     Text(origin(item)).font(.system(size: 13)).foregroundStyle(.secondary)
                 }
-                HStack(spacing: 8) {
-                    Button(picked ? "Unpick" : "Pick") { model.togglePick(item.id) }.buttonStyle(PillButtonStyle(prominent: !picked))
+                FlowLayout(spacing: 8) {
+                    if Self.canMake([item.id], model: model) {
+                        Button("Make GIF") { state.making = [item.id] }.buttonStyle(PillButtonStyle(prominent: true))
+                    }
+                    Button(picked ? "Unpick" : "Pick") { model.togglePick(item.id) }.buttonStyle(PillButtonStyle(selected: picked))
                     Button("Copy") { Task { await model.copy(item) } }.buttonStyle(PillButtonStyle())
                     if let file = model.localFile(item), item.kind != .template {
                         Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([file]) }.buttonStyle(PillButtonStyle())
                     }
-                    Spacer()
-                    IconButton(symbol: "trash", label: item.kind == .template ? "Hide" : "Remove") { state.removing = [item.id] }
                 }
                 if let made = item.made {
                     field("Captions", made.captions.filter { !$0.isEmpty }.joined(separator: " / "))
@@ -339,10 +369,17 @@ struct DetailPane: View {
                         Link("Open the source", destination: source).font(.system(size: 13))
                     }
                 }
+                Button(item.kind == .template ? "Hide This Template…" : "Move to Trash…") { state.removing = [item.id] }
+                    .buttonStyle(PillButtonStyle())
+                    .padding(.top, 6)
             }
-            .padding(18)
+            .padding(.horizontal, 18).padding(.bottom, 18)
         }
         .id(item.id)
+    }
+
+    static func canMake(_ ids: [String], model: AppModel) -> Bool {
+        (1...4).contains(ids.count) && ids.allSatisfy { model.item($0)?.rights.caption == true }
     }
 
     private func origin(_ item: Item) -> String {
