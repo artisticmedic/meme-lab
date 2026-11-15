@@ -67,6 +67,7 @@ public func jsonString<T: Encodable>(_ value: T) throws -> String {
 
 enum Shell {
     static func locate(_ tool: String) throws -> URL {
+        if tool.contains("/") { return URL(fileURLWithPath: tool) }
         let path = ProcessInfo.processInfo.environment["PATH"] ?? ""
         let dirs = path.split(separator: ":").map(String.init) + ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
         for dir in dirs {

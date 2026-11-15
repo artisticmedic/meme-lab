@@ -107,8 +107,20 @@ function sub(item) {
   return item.vibe || ({ template: "Template", clip: "Clip", made: "Made" })[item.kind];
 }
 
+function renderKlipy(grid) {
+  grid.className = "grid";
+  if (!state.klipy.length) { grid.append(el("p", { class: "empty" }, "KLIPY found nothing for that.")); return; }
+  for (const result of state.klipy) {
+    const tile = el("div", { class: "tile" + (selected.includes(result.slug) ? " sel" : ""), tabindex: "0", role: "button", onclick: () => toggle(result.slug), onkeydown: e => { if (e.key === "Enter") toggle(result.slug); } },
+      el("div", { class: "thumb" }, el("img", { src: result.preview, alt: result.title, loading: "lazy" }), el("span", { class: "badge" }, "✓")),
+      el("div", { class: "name" }, result.title));
+    grid.append(tile);
+  }
+}
+
 function renderGrid() {
   const grid = document.getElementById("grid");
+  if (state.mode === "klipy") { grid.replaceChildren(); renderKlipy(grid); return; }
   grid.className = state.mode === "propose" ? "grid big" : "grid";
   grid.replaceChildren();
   const items = visibleItems();
@@ -125,7 +137,7 @@ function renderGrid() {
 }
 
 function toggle(id) {
-  const max = state.mode === "propose" ? 1 : state.max;
+  const max = state.mode === "propose" || state.mode === "klipy" ? 1 : state.max;
   const i = selected.indexOf(id);
   if (i >= 0) selected.splice(i, 1);
   else { if (max === 1) selected = []; if (selected.length >= max) selected.shift(); selected.push(id); }
@@ -165,17 +177,26 @@ function detail(item) {
 
 function renderStatus() {
   const s = document.getElementById("status");
-  if (state.mode === "propose") s.textContent = (state.from || "The agent") + " has " + state.items.length + " option" + (state.items.length === 1 ? "" : "s") + ". Pick one, or say what to change.";
+  if (state.mode === "klipy") s.textContent = "Pick one to share its link.";
+  else if (state.mode === "propose") s.textContent = (state.from || "The agent") + " has " + state.items.length + " option" + (state.items.length === 1 ? "" : "s") + ". Pick one, or say what to change.";
   else if (state.mode === "pick") s.textContent = "Pick up to " + state.max + ". " + selected.length + " picked.";
   else s.textContent = state.total + " memes. " + selected.length + " picked.";
 }
 
 function renderFooter() {
   const footer = document.getElementById("footer");
+  const typed = Object.fromEntries([...footer.querySelectorAll("input")].map(i => [i.id, i.value]));
   footer.replaceChildren();
+  const keep = input => { input.value = typed[input.id] || ""; return input; };
   const byID = Object.fromEntries(state.items.map(i => [i.id, i]));
+  if (state.mode === "klipy") {
+    const use = el("button", { class: "pill primary", onclick: () => finish(selected, "") }, "Use this link");
+    if (!selected.length) use.disabled = true;
+    footer.append(el("span", { class: "chips sub" }, "Powered by KLIPY. Links only: shared as KLIPY serves them."), use);
+    return;
+  }
   if (state.mode === "propose") {
-    const note = el("input", { id: "note", placeholder: "Or tell the agent what to change, like “2, shorter caption”", autocomplete: "off" });
+    const note = keep(el("input", { id: "note", placeholder: "Or tell the agent what to change, like “2, shorter caption”", autocomplete: "off" }));
     const send = el("button", { class: "pill primary", onclick: () => finish(selected, note.value) }, "Send back");
     if (!selected.length) send.disabled = true;
     footer.append(note, send, el("button", { class: "pill", onclick: () => finish([], note.value) }, "None of these"));
@@ -189,9 +210,9 @@ function renderFooter() {
     if (!selected.length) use.disabled = true;
     footer.append(use);
   } else {
-    const idea = el("input", { id: "idea", placeholder: "Idea, like “me watching CI”", autocomplete: "off" });
+    const idea = keep(el("input", { id: "idea", placeholder: "Idea, like “me watching CI”", autocomplete: "off" }));
     const copy = el("button", { class: "pill primary", onclick: async () => {
-      const prompt = "Use Meme Lab (the `meme` command). Run `meme picks` to see the memes I picked (" + selected.join(", ") + "), then make a meme that combines them" + (idea.value.trim() ? ": " + idea.value.trim() : "") + ". Show me options with `meme propose --wait`.";
+      const prompt = "Use Meme Lab (the `meme` command). Run `meme picks` to see the memes I picked (" + selected.join(", ") + "), then make a meme that combines them" + (idea.value.trim() ? ": " + idea.value.trim() : "") + ". Show me the options with `meme propose`.";
       await navigator.clipboard.writeText(prompt); copy.textContent = "Copied"; setTimeout(() => copy.textContent = "Copy prompt", 1500);
     } }, "Copy prompt");
     if (!selected.length) copy.disabled = true;
@@ -203,6 +224,21 @@ async function finish(chosen, note) {
   try { await api("/api/choose", { chosen, note }); }
   catch (e) { document.getElementById("status").textContent = "That didn’t reach the agent: " + e.message; return; }
   document.body.replaceChildren(el("div", { class: "done" }, el("h2", {}, chosen.length ? "Sent back to the agent." : "Sent your note to the agent."), el("p", {}, "You can close this tab.")));
+}
+
+function setUpKlipySearch(initial) {
+  const search = document.getElementById("search");
+  search.placeholder = "Search KLIPY";
+  search.setAttribute("aria-label", "Search KLIPY");
+  search.value = initial || "";
+  search.replaceWith(search.cloneNode(true));
+  const box = document.getElementById("search");
+  box.addEventListener("keydown", async e => {
+    if (e.key !== "Enter" || !box.value.trim()) return;
+    try { state.klipy = await api("/api/klipy?q=" + encodeURIComponent(box.value.trim())); selected = []; document.getElementById("error").textContent = ""; }
+    catch (err) { document.getElementById("error").textContent = "KLIPY search failed: " + err.message; return; }
+    renderGrid(); renderFooter(); renderStatus();
+  });
 }
 
 function renderTabs() {
@@ -221,6 +257,7 @@ api("/api/state").then(s => {
   selected = s.mode === "browse" ? s.picks.filter(id => s.items.some(i => i.id === id)) : [];
   saved = [...selected];
   if (s.mode === "propose") document.getElementById("controls").remove();
+  else if (s.mode === "klipy") setUpKlipySearch(s.query);
   else renderTabs();
   renderStatus(); renderGrid(); renderFooter();
 }).catch(e => { document.getElementById("status").textContent = "Meme Lab isn’t answering: " + e.message; });

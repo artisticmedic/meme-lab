@@ -115,4 +115,19 @@ struct PipelineTests {
         #expect(!StatusStore(url: library.paths.status).load().waitingForPick)
         _ = home
     }
+
+    @Test func klipyPickReturnsTheLinkUntouched() async throws {
+        let (library, _) = try Self.library()
+        let results = try Klipy.results(from: KlipyTests.fixture)
+        let picker = try Picker(library: library, mode: .klipy(query: "hi", results: results, key: "unused"), ids: [])
+        try picker.start()
+        defer { picker.stop() }
+        let token = URLComponents(url: picker.url, resolvingAgainstBaseURL: false)!.queryItems!.first { $0.name == "t" }!.value!
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(picker.url.port!)/api/choose")!)
+        request.httpMethod = "POST"
+        request.setValue(token, forHTTPHeaderField: "X-Meme-Token")
+        request.httpBody = try JSONEncoder().encode(PickerResult(chosen: ["b-second"], note: ""))
+        _ = try await URLSession.shared.data(for: request)
+        #expect(picker.wait(timeout: 5)?.link == "https://static.klipy.com/ii/x/b.gif?k=1")
+    }
 }

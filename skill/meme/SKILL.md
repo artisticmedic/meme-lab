@@ -1,6 +1,6 @@
 ---
 name: meme
-description: Makes captioned meme GIFs with Meme Lab (the `meme` command) from a feeling, a premise, or two vibes to combine, shows Tim the options in a picker page, and delivers his pick to the clipboard or to Riv's Discord thread. Use when Tim asks for a meme, a reaction GIF, "a meme that combines these two vibes", a caption on a clip or template, or something to post in Discord; also for browsing, tagging or refreshing the meme library.
+description: Makes captioned meme GIFs with Meme Lab, the `meme` command. Use when Tim asks for a meme or reaction GIF, "a meme that combines these two vibes", a caption on a clip, or something for Discord.
 ---
 
 # Meme Lab
@@ -49,6 +49,17 @@ Every read prints JSON. Errors are one plain sentence on stderr. `meme <command>
    - `meme send <id> --riv`: posts it to Riv's Discord thread, for Tim on his phone. Add `--caption "..."` for a one-line caption.
    - `meme send <id> --save ~/Desktop`: copies it into a folder.
    - `--mp4` sends the MP4 instead: smaller, and it plays inline in Discord.
+
+## KLIPY reaction GIFs (links only)
+
+`meme status` shows `"klipy": true` when a `KLIPY_API_KEY` secret exists. Without one, skip KLIPY and say so in a few words.
+
+```
+meme klipy cat typing --copy
+```
+
+- It opens KLIPY's results in their own grid, in KLIPY's order, for Tim to choose one. It prints `{"chosen": [slug], "link": "..."}`, and `--copy` puts the link on the clipboard.
+- KLIPY's terms require every result, unfiltered and in its order. Never pick among KLIPY results yourself, and never pass a KLIPY link to `meme add` or `meme make`.
 
 ## Rules
 

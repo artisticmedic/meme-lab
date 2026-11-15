@@ -11,7 +11,7 @@ struct Meme: AsyncParsableCommand {
         discussion: "Reads print JSON. Errors are one plain sentence on stderr. Run `meme sync` first.",
         version: "0.1.0",
         subcommands: [
-            SearchCommand.self, Info.self, Make.self, Propose.self, Send.self, Pick.self, Picks.self, Browse.self,
+            SearchCommand.self, Info.self, Make.self, Propose.self, Send.self, Pick.self, Picks.self, Browse.self, KlipyCommand.self,
             Add.self, Import.self, Untagged.self, Tag.self, Collect.self, Remove.self, Sync.self,
             StatusCommand.self, GetCommand.self, SetCommand.self,
         ]
@@ -170,7 +170,7 @@ func stopOnInterrupt(_ picker: Picker, exitCode: Int32) -> DispatchSourceSignal 
 }
 
 @discardableResult
-func waitForChoice(_ picker: Picker, timeout: Double, open: Bool) throws -> PickerResult {
+func waitForChoice(_ picker: Picker, timeout: Double, open: Bool, print printResult: Bool = true) throws -> PickerResult {
     try picker.start()
     let interrupt = stopOnInterrupt(picker, exitCode: 130)
     defer { interrupt.cancel() }
@@ -182,7 +182,7 @@ func waitForChoice(_ picker: Picker, timeout: Double, open: Bool) throws -> Pick
         say("Nobody chose within \(Int(timeout)) second\(Int(timeout) == 1 ? "" : "s").")
         throw ExitCode(124)
     }
-    try output(result)
+    if printResult { try output(result) }
     return result
 }
 
@@ -203,6 +203,29 @@ struct Browse: ParsableCommand {
         say("Control-C to stop.")
         if !noOpen { openInBrowser(picker.url) }
         _ = picker.wait(timeout: .greatestFiniteMagnitude)
+    }
+}
+
+struct KlipyCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "klipy",
+        abstract: "Search KLIPY in its own grid and let Tim pick one to share as a link. Needs a KLIPY_API_KEY secret.",
+        discussion: "KLIPY media is link-only: never downloaded, captioned or re-ordered. Prints {\"chosen\": [slug], \"link\": \"...\"}."
+    )
+    @Argument(help: "What to search for.") var words: [String]
+    @Flag(help: "Put the chosen link on the clipboard as text.") var copy = false
+    @Option(help: "Seconds to wait.") var timeout: Double = 900
+    @Flag(name: .customLong("no-open"), help: "Print the link instead of opening the browser.") var noOpen = false
+
+    func run() async throws {
+        let library = try Library.open()
+        let key = try Klipy.key()
+        let query = words.joined(separator: " ")
+        let results = try await Klipy.search(query, key: key)
+        let picker = try Picker(library: library, mode: .klipy(query: query, results: results, key: key), ids: [])
+        let result = try waitForChoice(picker, timeout: timeout, open: !noOpen, print: false)
+        if copy, let link = result.link { try Clipboard.copyText(link) }
+        try output(result)
     }
 }
 
@@ -430,6 +453,7 @@ struct StatusCommand: ParsableCommand {
         let status: MemeCore.Status
         let items: [String: Int]
         let untagged: Int
+        let klipy: Bool
         let lastSync: Date?
         let library: String
         let config: String
@@ -442,7 +466,7 @@ struct StatusCommand: ParsableCommand {
         for item in library.visible { counts[item.kind.rawValue, default: 0] += 1 }
         try output(Output(
             status: StatusStore(url: library.paths.status).load(), items: counts,
-            untagged: library.visible.filter { $0.vibe == nil }.count, lastSync: library.lastSync,
+            untagged: library.visible.filter { $0.vibe == nil }.count, klipy: Klipy.configured(), lastSync: library.lastSync,
             library: library.root.path, config: library.paths.config.path, statusFile: library.paths.status.path
         ))
     }

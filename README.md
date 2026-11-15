@@ -11,6 +11,7 @@ The command does no reasoning of its own. It searches, renders, shows and delive
 - **Rendering.** Captions come in four styles: classic, caption bar, subtitle, and the template's own text boxes. Items combine in four layouts: single, side by side, stacked and in sequence. Text is drawn with Core Text; ffmpeg composes the frames and gifski encodes the GIF. A GIF is shrunk until it fits under 8 MB, and an MP4 is written beside it.
 - **Picker page.** `meme pick`, `meme propose` and `meme browse` serve a page on 127.0.0.1 with an animated grid. The page hands Tim's choice back to the waiting command.
 - **Delivery.** `meme send` puts the file itself on the clipboard, so pasting into Discord uploads it. `--riv` hands the file to Riv on the M1, which posts it to its "Meme Lab" thread.
+- **KLIPY, links only.** With a `KLIPY_API_KEY` (an environment variable, or the `secrets` Keychain helper), `meme klipy <words>` shows KLIPY's results in their own grid, in KLIPY's order, and returns the chosen link. Without a key the command says KLIPY is off.
 
 ## Media and terms
 

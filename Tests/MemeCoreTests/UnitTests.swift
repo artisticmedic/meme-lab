@@ -261,3 +261,45 @@ enum Scratch {
         return dir
     }
 }
+
+struct KlipyTests {
+    static let fixture = Data("""
+    {"result": true, "data": {"data": [
+      {"slug": "b-second", "title": "B", "file": {"md": {"gif": {"url": "https://static.klipy.com/ii/x/b.gif?k=1"}}, "sm": {"webp": {"url": "https://static.klipy.com/ii/x/b.webp"}}}},
+      {"slug": "a-first", "title": "A", "file": {"hd": {"mp4": {"url": "https://static.klipy.com/ii/x/a.mp4"}}}}
+    ], "current_page": 1, "per_page": 24, "has_next": false}}
+    """.utf8)
+
+    @Test func keepsKlipysOrderAndEveryResult() throws {
+        let results = try Klipy.results(from: Self.fixture)
+        #expect(results.map(\.slug) == ["b-second", "a-first"])
+        #expect(results[0].link == "https://static.klipy.com/ii/x/b.gif?k=1")
+        #expect(results[0].preview.hasSuffix("b.webp"))
+        #expect(results[1].link.hasSuffix("a.mp4"))
+    }
+
+    /// A stand-in `secrets` helper, ahead of the real one on the PATH.
+    static func secrets(holding name: String, value: String) throws -> [String: String] {
+        let dir = try Scratch.make()
+        let tool = dir.appending(path: "secrets")
+        let script = "#!/bin/sh\n[ \"$1\" = names ] && echo \(name) && exit 0\n[ \"$2\" = \(name) ] && echo \(value) && exit 0\nexit 1\n"
+        try Data(script.utf8).write(to: tool)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tool.path)
+        return ["PATH": dir.path]
+    }
+
+    @Test func readsTheKeyFromSecrets() throws {
+        let env = try Self.secrets(holding: "KLIPY_API_KEY", value: "from-keychain")
+        #expect(Klipy.configured(environment: env))
+        #expect(try Klipy.key(environment: env) == "from-keychain")
+    }
+
+    @Test func offWithoutAKey() throws {
+        let env = try Self.secrets(holding: "OTHER_SECRET", value: "x")
+        #expect(!Klipy.configured(environment: env))
+        let error = #expect(throws: MemeError.self) { try Klipy.key(environment: env) }
+        #expect(error?.description.hasPrefix("KLIPY search is off") == true)
+        #expect(Klipy.configured(environment: env.merging(["KLIPY_API_KEY": "k"]) { $1 }))
+        #expect(try Klipy.key(environment: ["KLIPY_API_KEY": "k"]) == "k")
+    }
+}

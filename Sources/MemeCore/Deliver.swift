@@ -10,6 +10,12 @@ public enum Clipboard {
             throw MemeError("The clipboard refused \(url.lastPathComponent).")
         }
     }
+
+    public static func copyText(_ text: String, environment: [String: String] = ProcessInfo.processInfo.environment) throws {
+        let board = environment["MEME_LAB_PASTEBOARD"].map { NSPasteboard(name: NSPasteboard.Name($0)) } ?? .general
+        board.clearContents()
+        guard board.setString(text, forType: .string) else { throw MemeError("The clipboard refused the link.") }
+    }
 }
 
 public struct RivResult: Codable, Sendable {
