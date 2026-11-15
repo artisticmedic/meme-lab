@@ -79,7 +79,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSDr
         if waitingCommand?.handle != request.pid {
             waitingCommand?.cancel()
             let source = DispatchSource.makeProcessSource(identifier: request.pid, eventMask: .exit, queue: .main)
-            source.setEventHandler { [weak self] in MainActor.assumeIsolated { self?.model.reloadStatus() } }
+            // An exited command that its parent has not reaped yet still answers kill(pid, 0), so withdraw here, not by liveness.
+            let id = request.id, store = model.store
+            source.setEventHandler { [weak self] in
+                AppLink.withdraw(id, store: store)
+                MainActor.assumeIsolated { self?.model.reloadStatus() }
+            }
             source.resume()
             waitingCommand = source
             if !AppLink.isAlive(request.pid) { model.reloadStatus() }

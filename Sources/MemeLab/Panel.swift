@@ -133,7 +133,7 @@ struct PanelView: View {
                         .font(.system(size: 13)).foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity).padding(.top, 40)
                 }
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 4), GridItem(.flexible(), spacing: 4)], spacing: 4) {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 4, alignment: .top), GridItem(.flexible(), spacing: 4, alignment: .top)], spacing: 4) {
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                         Tile(item: item, number: numbers[item.id], picked: picked.contains(item.id),
                              selected: state.focus == index, height: 96, caption: captions ? caption(item) : nil)
@@ -269,6 +269,8 @@ private final class PanelWindow: NSPanel {
         hasShadow = true
         isReleasedWhenClosed = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
+        // Without it SwiftUI's onHover never fires in this borderless panel.
+        acceptsMouseMovedEvents = true
     }
 
     override var canBecomeKey: Bool { true }

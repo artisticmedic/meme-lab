@@ -177,7 +177,7 @@ struct LibraryView: View {
                     Text(emptyText).font(.system(size: 15)).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         .frame(maxWidth: 360).padding(.top, 80)
                 }
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 168, maximum: 260), spacing: 10)], spacing: 10) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 168, maximum: 260), spacing: 10, alignment: .top)], spacing: 10) {
                     ForEach(items) { item in
                         Tile(item: item, picked: model.status.picks.contains(item.id), selected: state.selection.contains(item.id), height: 128)
                             .onTapGesture(count: 2) { model.togglePick(item.id) }

@@ -112,6 +112,7 @@ final class MediaLayerView: NSView {
     var frames: Frames? { didSet { if oldValue?.id != frames?.id { refresh() } } }
     var video: URL? { didSet { if oldValue != video { stopVideo(); refresh() } } }
     var playing = false { didSet { if oldValue != playing { refresh() } } }
+    var onHover: ((Bool) -> Void)?
     var fill = true { didSet { if oldValue != fill { refresh() } } }
     private let imageLayer = CALayer()
     private var playerLayer: AVPlayerLayer?
@@ -140,6 +141,16 @@ final class MediaLayerView: NSView {
         super.viewDidChangeBackingProperties()
         imageLayer.contentsScale = window?.backingScaleFactor ?? 2
     }
+
+    // SwiftUI's onHover did not fire for tiles in the guest; an AppKit tracking area does, in the panel and the window.
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    }
+
+    override func mouseEntered(with event: NSEvent) { onHover?(true) }
+    override func mouseExited(with event: NSEvent) { onHover?(false) }
 
     private func refresh() {
         imageLayer.contentsGravity = fill ? .resizeAspectFill : .resizeAspect
@@ -194,6 +205,7 @@ struct MediaLayer: NSViewRepresentable {
     let video: URL?
     let playing: Bool
     let fill: Bool
+    var onHover: ((Bool) -> Void)?
 
     func makeNSView(context: Context) -> MediaLayerView { MediaLayerView(frame: .zero) }
 
@@ -202,6 +214,7 @@ struct MediaLayer: NSViewRepresentable {
         view.frames = frames
         view.video = video
         view.playing = playing
+        view.onHover = onHover
     }
 }
 
@@ -211,6 +224,7 @@ struct MediaPreview: View {
     var playing: Bool
     var fill = true
     var maxPixel = 320
+    var onHover: ((Bool) -> Void)?
 
     @State private var still: Frames?
     @State private var moving: Frames?
@@ -221,7 +235,7 @@ struct MediaPreview: View {
     private var video: URL? { file.flatMap { Media.videoExtensions.contains($0.pathExtension.lowercased()) ? $0 : nil } }
 
     var body: some View {
-        MediaLayer(frames: moving ?? still, video: video, playing: playing, fill: fill)
+        MediaLayer(frames: moving ?? still, video: video, playing: playing, fill: fill, onHover: onHover)
             .background(Color.primary.opacity(0.06))
             .overlay {
                 if failed {

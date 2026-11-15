@@ -196,7 +196,7 @@ struct Tile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            MediaPreview(item: item, playing: hovering || model.config.animateAlways)
+            MediaPreview(item: item, playing: hovering || model.config.animateAlways, onHover: { hovering = $0 })
                 .frame(height: height)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay(alignment: .topLeading) {
@@ -230,7 +230,6 @@ struct Tile: View {
             if selected { RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.09)) }
         }
         .contentShape(Rectangle())
-        .onHover { hovering = $0 }
         .onDrag { model.dragProvider(item) }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel([number.map { "Option \($0)" }, item.title, caption, picked ? "picked" : nil].compactMap { $0 }.joined(separator: ", "))
@@ -240,8 +239,11 @@ struct Tile: View {
 
 extension AppModel {
     func dragProvider(_ item: Item) -> NSItemProvider {
-        guard let file = localFile(item) else { return NSItemProvider() }
-        return NSItemProvider(contentsOf: file) ?? NSItemProvider()
+        guard let file = localFile(item), let provider = NSItemProvider(contentsOf: file) else { return NSItemProvider() }
+        // Without a name, Finder and Discord call every drop "GIF image".
+        let name = item.title.replacingOccurrences(of: "[/:\\\\]", with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
+        provider.suggestedName = String((name.isEmpty ? item.id : name).prefix(60))
+        return provider
     }
 
     func recipe(_ item: Item) -> String? { item.made.map(Picker.recipe) }
