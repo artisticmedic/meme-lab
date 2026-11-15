@@ -201,6 +201,23 @@ struct LayoutTests {
         #expect(Colors.named("no-such-colour") == Colors.white)
         let boxes = [TextBox(anchorX: 0, anchorY: 0, scaleX: 1, scaleY: 0.2, style: "mock")]
         #expect(try Captions.templateBlocks(boxes: boxes, captions: ["meme lab"], panel: CGSize(width: 10, height: 10)).first?.text == "mEmE LaB")
+        #expect(try Captions.templateBlocks(boxes: boxes, captions: ["aß"], panel: CGSize(width: 10, height: 10)).first?.text == "aSS")
+        #expect(Colors.named("decade") == Colors.white)
+        #expect(Colors.named("red") != Colors.white)
+    }
+
+    @Test func statusToleratesMissingKeys() throws {
+        let status = try JSONFile.decoder().decode(Status.self, from: Data(#"{"picks": ["drake"]}"#.utf8))
+        #expect(status.picks == ["drake"])
+        #expect(!status.waitingForPick)
+    }
+
+    @Test func rivChecksBeforeUploading() throws {
+        let file = try Scratch.make().appending(path: "x.gif")
+        try Data("GIF89a".utf8).write(to: file)
+        var config = Config.defaults
+        config.rivHost = "invalid.host.example"
+        #expect(throws: MemeError.self) { try Riv.send([file], caption: String(repeating: "a", count: 301), config: config) }
     }
 
     @Test func textShrinksToFit() {

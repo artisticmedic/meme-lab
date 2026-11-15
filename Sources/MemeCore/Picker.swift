@@ -75,7 +75,7 @@ public final class Picker: @unchecked Sendable {
         var missing: [String] = []
         for item in chosen {
             if let file = library.localFile(for: item), FileManager.default.fileExists(atPath: file.path) { local[item.id] = file }
-            else if let url = item.mediaURL.flatMap(URL.init(string:)) { remote[item.id] = url }
+            else if let url = item.mediaURL.flatMap(URL.init(string:)), Blocklist.service(for: url) == nil { remote[item.id] = url }
             else { missing.append(item.id) }
         }
         if ids != nil, !missing.isEmpty {

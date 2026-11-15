@@ -164,6 +164,7 @@ func stopOnInterrupt(_ picker: Picker, exitCode: Int32) -> DispatchSourceSignal 
     let source = DispatchSource.makeSignalSource(signal: SIGINT, queue: .global())
     signal(SIGINT, SIG_IGN)
     source.setEventHandler { picker.stop(); Darwin.exit(exitCode) }
+    source.setCancelHandler { signal(SIGINT, SIG_DFL) }
     source.resume()
     return source
 }
@@ -253,7 +254,7 @@ struct Send: AsyncParsableCommand {
     @Flag(help: "Post it to Riv's Meme Lab thread in Discord.") var riv = false
     @Option(help: "One-line caption for the Riv post.") var caption: String?
     @Flag(help: "Send the MP4 instead of the GIF.") var mp4 = false
-    @Flag(name: .customLong("dry-run"), help: "With --riv: check everything, post nothing.") var dryRun = false
+    @Flag(name: .customLong("dry-run"), help: "With --riv: Riv checks the file, token and thread and posts nothing. The file is still copied to the M1.") var dryRun = false
 
     struct Output: Encodable {
         let id: String
@@ -292,8 +293,10 @@ struct Send: AsyncParsableCommand {
             let text = caption ?? item.made?.captions.first { !$0.isEmpty } ?? item.title
             result.riv = try Riv.send([file], caption: text, config: library.config, dryRun: dryRun)
         }
-        _ = try library.update(id) { $0.lastUsed = Date(); $0.useCount += 1 }
-        try library.save()
+        if !dryRun {
+            _ = try library.update(id) { $0.lastUsed = Date(); $0.useCount += 1 }
+            try library.save()
+        }
         try output(result)
     }
 }

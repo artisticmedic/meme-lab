@@ -35,6 +35,11 @@ public enum Riv {
 
     public static func send(_ files: [URL], caption: String, config: Config, dryRun: Bool = false) throws -> RivResult {
         guard !files.isEmpty else { throw MemeError("Nothing to send to Riv.") }
+        let caption = caption.replacingOccurrences(of: "\n", with: " ")
+        guard caption.count <= 300 else { throw MemeError("Riv takes a caption of 300 characters at most; this one has \(caption.count).") }
+        for file in files where try fileSize(file) > 20 * 1_048_576 {
+            throw MemeError("\(file.lastPathComponent) is over Riv's 20 MiB limit. Send the MP4 with --mp4, or make it smaller.")
+        }
         let dropDir = config.rivDropDir ?? "~/riv/drop"
         let host = config.rivHost
         let remoteDir = dropDir.hasPrefix("~/") ? String(dropDir.dropFirst(2)) : dropDir
@@ -45,19 +50,18 @@ public enum Riv {
 
         let post = try Shell.execute(
             "ssh", [host, command(dropDir: dropDir, names: files.map(remoteName), dryRun: dryRun)],
-            input: Data(caption.replacingOccurrences(of: "\n", with: " ").utf8)
+            input: Data(caption.utf8)
         )
-        let err = post.stderr
         let links = String(decoding: post.stdout, as: UTF8.self).split(separator: "\n").map(String.init).filter { $0.hasPrefix("http") }
 
         switch post.status {
         case 0: return RivResult(links: links, dryRun: dryRun)
-        case 65: throw MemeError("Riv refused the file or caption; nothing was posted. \(err)")
-        case 69: throw MemeError("Riv could not post (Discord, the network or the M1 failed). Posted: \(links.isEmpty ? "nothing" : links.joined(separator: " ")). Safe to retry. \(err)")
-        case 75: throw MemeError("Riv is rate-limited or took the job without answering yet. Do not resend; check the Meme Lab thread. \(err)")
-        case 78: throw MemeError("Riv's Discord token or channel is not working; tell Tim. \(err)")
-        case 255: throw MemeError("Could not reach the M1 over ssh; it may be asleep or offline. \(err)")
-        default: throw MemeError("riv-drop exited \(post.status). \(err)")
+        case 65: throw MemeError("Riv refused the file or caption; nothing was posted. \(post.stderr)")
+        case 69: throw MemeError("Riv could not post (Discord, the network or the M1 failed). Posted: \(links.isEmpty ? "nothing" : links.joined(separator: " ")). Safe to retry. \(post.stderr)")
+        case 75: throw MemeError("Riv is rate-limited or took the job without answering yet. Do not resend; check the Meme Lab thread. \(post.stderr)")
+        case 78: throw MemeError("Riv's Discord token or channel is not working; tell Tim. \(post.stderr)")
+        case 255: throw MemeError("Could not reach the M1 over ssh; it may be asleep or offline. \(post.stderr)")
+        default: throw MemeError("riv-drop exited \(post.status). \(post.stderr)")
         }
     }
 }

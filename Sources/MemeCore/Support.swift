@@ -84,24 +84,30 @@ enum Shell {
         let stderr: String
     }
 
-    /// Reads stderr on another thread so a full pipe cannot stall it.
+    /// Writes stdin and reads stderr on other threads so a full pipe cannot stall it.
     static func execute(_ tool: String, _ arguments: [String], input: Data? = nil) throws -> Outcome {
         let process = Process()
         process.executableURL = try locate(tool)
         process.arguments = arguments
         let out = Pipe()
         let err = Pipe()
-        let stdin = Pipe()
+        let stdin = input.map { _ in Pipe() }
         process.standardOutput = out
         process.standardError = err
-        process.standardInput = input == nil ? FileHandle.nullDevice : stdin
+        process.standardInput = stdin ?? FileHandle.nullDevice
+        if stdin != nil { signal(SIGPIPE, SIG_IGN) }
         try process.run()
-        if let input {
-            stdin.fileHandleForWriting.write(input)
-            try stdin.fileHandleForWriting.close()
-        }
         let stderr = Collected()
         let group = DispatchGroup()
+        if let stdin, let input {
+            group.enter()
+            DispatchQueue.global().async {
+                // A child that exits without reading gives EPIPE here; its exit status reports the failure.
+                try? stdin.fileHandleForWriting.write(contentsOf: input)
+                try? stdin.fileHandleForWriting.close()
+                group.leave()
+            }
+        }
         group.enter()
         DispatchQueue.global().async {
             stderr.data = err.fileHandleForReading.readDataToEndOfFile()

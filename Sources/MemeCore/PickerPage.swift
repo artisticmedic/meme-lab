@@ -15,6 +15,7 @@ enum PickerPage {
   .title { display: flex; align-items: baseline; gap: 12px; }
   h1 { font-size: 17px; font-weight: 600; margin: 0; }
   #status { color: var(--secondary); font-size: 14px; }
+  #error { font-size: 14px; font-weight: 600; }
   .controls { display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
   #search { flex: 1; min-width: 220px; max-width: 460px; height: 36px; border: 0; border-radius: 10px; background: var(--fill); color: var(--label); padding: 0 12px; font: inherit; outline: none; }
   #search:focus { box-shadow: 0 0 0 2px var(--label); }
@@ -61,7 +62,7 @@ enum PickerPage {
 </head>
 <body>
 <header>
-  <div class="title"><h1>Meme Lab</h1><span id="status">Loading…</span></div>
+  <div class="title"><h1>Meme Lab</h1><span id="status">Loading…</span><span id="error" role="alert"></span></div>
   <div class="controls" id="controls">
     <input id="search" type="search" placeholder="Search by name or feeling" autocomplete="off" aria-label="Search">
     <div class="tabs" id="tabs"></div>
@@ -73,7 +74,7 @@ enum PickerPage {
 <script>
 const token = new URLSearchParams(location.search).get("t");
 const el = (tag, props = {}, ...children) => { const n = document.createElement(tag); for (const [k, v] of Object.entries(props)) { if (k === "class") n.className = v; else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else if (v !== undefined && v !== null) n.setAttribute(k, v); } for (const c of children) if (c !== null && c !== undefined) n.append(c); return n; };
-let state, selected = [], tab = "all", query = "";
+let state, selected = [], saved = [], saving = Promise.resolve(), tab = "all", query = "";
 const tabs = [["all", "All"], ["template", "Templates"], ["clip", "Clips"], ["made", "Made"], ["rising", "New and rising"]];
 
 async function api(path, body) {
@@ -128,8 +129,19 @@ function toggle(id) {
   const i = selected.indexOf(id);
   if (i >= 0) selected.splice(i, 1);
   else { if (max === 1) selected = []; if (selected.length >= max) selected.shift(); selected.push(id); }
-  if (state.mode === "browse") api("/api/picks", { chosen: selected, note: "" }).catch(e => { document.getElementById("status").textContent = "Your picks weren’t saved: " + e.message; });
+  if (state.mode === "browse") savePicks([...selected]);
   renderGrid(); renderFooter(); renderStatus();
+}
+
+// Saves run one after another, so the server always ends up with the latest selection.
+function savePicks(picks) {
+  saving = saving.then(() => api("/api/picks", { chosen: picks, note: "" })).then(ok => {
+    saved = ok; document.getElementById("error").textContent = "";
+  }).catch(e => {
+    selected = [...saved];
+    document.getElementById("error").textContent = "Picks not saved: " + e.message;
+    renderGrid(); renderFooter(); renderStatus();
+  });
 }
 
 function detail(item) {
@@ -207,6 +219,7 @@ document.addEventListener("keydown", e => {
 api("/api/state").then(s => {
   state = s;
   selected = s.mode === "browse" ? s.picks.filter(id => s.items.some(i => i.id === id)) : [];
+  saved = [...selected];
   if (s.mode === "propose") document.getElementById("controls").remove();
   else renderTabs();
   renderStatus(); renderGrid(); renderFooter();

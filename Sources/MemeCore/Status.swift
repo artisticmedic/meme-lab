@@ -27,23 +27,41 @@ public struct Status: Codable, Equatable, Sendable {
     public var updatedAt: Date?
 
     public init() {}
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        picks = try c.decodeIfPresent([String].self, forKey: .picks) ?? []
+        proposal = try c.decodeIfPresent(Proposal.self, forKey: .proposal)
+        waitingForPick = try c.decodeIfPresent(Bool.self, forKey: .waitingForPick) ?? false
+        lastMade = try c.decodeIfPresent(String.self, forKey: .lastMade)
+        picker = try c.decodeIfPresent(PickerState.self, forKey: .picker)
+        updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt)
+    }
 }
 
 public struct StatusStore: Sendable {
     public let url: URL
-    private static let lock = NSLock()
+    private static let threadLock = NSLock()
 
     public init(url: URL) { self.url = url }
 
-    /// Status only mirrors live state, so a missing or unreadable file starts empty and is replaced on the next update.
+    /// Writes are atomic and missing keys decode as empty, so only a hand-mangled file reads as empty; the next update
+    /// replaces it. Status mirrors live state and holds nothing that cannot be picked again.
     public func load() -> Status {
         (try? JSONFile.decoder().decode(Status.self, from: Data(contentsOf: url))) ?? Status()
     }
 
+    /// Serialised across threads and processes, since the picker page and an agent's commands both update the file.
     @discardableResult
     public func update(_ change: (inout Status) -> Void) throws -> Status {
-        Self.lock.lock()
-        defer { Self.lock.unlock() }
+        Self.threadLock.lock()
+        defer { Self.threadLock.unlock() }
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let fd = open(url.path + ".lock", O_CREAT | O_RDWR, 0o644)
+        guard fd >= 0 else { throw MemeError("Could not open \(url.lastPathComponent).lock.") }
+        defer { close(fd) }
+        flock(fd, LOCK_EX)
+        defer { flock(fd, LOCK_UN) }
         var status = load()
         change(&status)
         status.updatedAt = Date()

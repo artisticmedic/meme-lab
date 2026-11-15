@@ -158,7 +158,7 @@ enum Captions {
             let cased = switch box.style {
             case "upper": text.uppercased()
             case "lower": text.lowercased()
-            case "mock": String(text.enumerated().map { $0.offset % 2 == 0 ? Character($0.element.lowercased()) : Character($0.element.uppercased()) })
+            case "mock": text.enumerated().map { $0.offset % 2 == 0 ? $0.element.lowercased() : $0.element.uppercased() }.joined()
             default: text
             }
             return TextBlock(

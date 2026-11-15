@@ -40,15 +40,23 @@ enum Colors {
     static let white = CGColor(red: 1, green: 1, blue: 1, alpha: 1)
     static let black = CGColor(red: 0, green: 0, blue: 0, alpha: 1)
 
-    /// The CSS names memegen's configs use, plus #RGB and #RRGGBB. Anything else draws white, the usual meme text.
+    private static let cssNames: [String: UInt32] = [
+        "white": 0xFFFFFF, "black": 0x000000, "red": 0xFF0000, "yellow": 0xFFFF00, "blue": 0x0000FF,
+        "green": 0x008000, "orange": 0xFFA500, "purple": 0x800080, "pink": 0xFFC0CB, "gray": 0x808080,
+        "grey": 0x808080, "silver": 0xC0C0C0, "gold": 0xFFD700, "navy": 0x000080, "khaki": 0xF0E68C,
+        "maroon": 0x800000, "palegoldenrod": 0xEEE8AA,
+    ]
+
+    /// Common CSS names plus #RGB and #RRGGBB. Anything else draws white, the usual meme text.
     static func named(_ name: String) -> CGColor {
-        let names: [String: UInt32] = ["white": 0xFFFFFF, "black": 0x000000, "khaki": 0xF0E68C, "maroon": 0x800000, "palegoldenrod": 0xEEE8AA]
-        var hex = name.lowercased()
-        if hex.hasPrefix("#") {
-            hex.removeFirst()
+        let lowered = name.lowercased()
+        var value = cssNames[lowered]
+        if value == nil, lowered.hasPrefix("#") {
+            var hex = String(lowered.dropFirst())
             if hex.count == 3 { hex = hex.map { "\($0)\($0)" }.joined() }
+            if hex.count == 6 { value = UInt32(hex, radix: 16) }
         }
-        guard let value = names[name.lowercased()] ?? (hex.count == 6 ? UInt32(hex, radix: 16) : nil) else { return white }
+        guard let value else { return white }
         return CGColor(red: CGFloat(value >> 16 & 0xFF) / 255, green: CGFloat(value >> 8 & 0xFF) / 255, blue: CGFloat(value & 0xFF) / 255, alpha: 1)
     }
 
