@@ -156,7 +156,6 @@ public final class Picker: @unchecked Sendable {
         _ = try? status.update { status in
             status.picker = nil
             status.waitingForPick = false
-            status.proposal = nil
         }
     }
 

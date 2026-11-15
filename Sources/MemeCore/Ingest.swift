@@ -125,7 +125,7 @@ extension Library {
             rights: Rights(caption: true, post: post ?? (recording ? .freely : .personal)),
             sourceURL: sourceURL, file: relative, animated: info.animated,
             width: info.width, height: info.height, tags: tags.map { $0.lowercased() },
-            licence: licence ?? (recording ? "Tim's own recording" : "Saved by Tim; origin unknown, personal use"),
+            licence: licence ?? (recording ? "Your own recording" : "Saved by you; origin unknown, personal use"),
             attribution: attribution
         )
         item.added = Date()

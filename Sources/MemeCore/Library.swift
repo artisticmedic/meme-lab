@@ -14,18 +14,38 @@ public final class Library {
         var items: [Item]
     }
 
+    /// The state last read from or written to disk, so `save` writes only this instance's changes.
+    private var loaded: [String: Item] = [:]
+    private var loadedSync: Date?
+    private var loadedTop: [String] = []
+
     public init(paths: Paths, config: Config) throws {
         self.paths = paths
         self.config = config
-        guard FileManager.default.fileExists(atPath: paths.index.path) else { return }
+        try reload()
+    }
+
+    private static func read(_ url: URL) throws -> IndexFile? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         do {
-            let file = try JSONFile.decoder().decode(IndexFile.self, from: Data(contentsOf: paths.index))
-            items = Dictionary(file.items.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
-            lastSync = file.lastSync
-            imgflipTop = file.imgflipTop
+            return try JSONFile.decoder().decode(IndexFile.self, from: Data(contentsOf: url))
         } catch {
-            throw MemeError("\(paths.index.path) does not parse (\(error)). Restore it or move it aside, then run `meme sync`.")
+            throw MemeError("\(url.path) does not parse (\(error)). Restore it or move it aside, then run `meme sync`.")
         }
+    }
+
+    private func adopt(_ file: IndexFile?) {
+        items = Dictionary((file?.items ?? []).map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+        lastSync = file?.lastSync
+        imgflipTop = file?.imgflipTop ?? []
+        loaded = items
+        loadedSync = lastSync
+        loadedTop = imgflipTop
+    }
+
+    /// Re-reads the index, dropping unsaved changes.
+    public func reload() throws {
+        adopt(try Self.read(paths.index))
     }
 
     public static func open(environment: [String: String] = ProcessInfo.processInfo.environment) throws -> Library {
@@ -38,9 +58,22 @@ public final class Library {
         return URL(fileURLWithPath: (dir as NSString).expandingTildeInPath, isDirectory: true)
     }
 
+    /// Merges this instance's changes into the index on disk, so the app and a command saving at once both keep theirs.
     public func save() throws {
-        let sorted = items.values.sorted { $0.id < $1.id }
-        try JSONFile.write(IndexFile(version: 1, lastSync: lastSync, imgflipTop: imgflipTop, items: sorted), to: paths.index)
+        try FileLock.holding(paths.index) {
+            let disk = try Self.read(paths.index)
+            var merged = Dictionary((disk?.items ?? []).map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+            for (id, item) in items where loaded[id] != item { merged[id] = item }
+            for id in loaded.keys where items[id] == nil { merged[id] = nil }
+            let file = IndexFile(
+                version: 1,
+                lastSync: lastSync != loadedSync ? lastSync : disk?.lastSync,
+                imgflipTop: imgflipTop != loadedTop ? imgflipTop : disk?.imgflipTop ?? [],
+                items: merged.values.sorted { $0.id < $1.id }
+            )
+            try JSONFile.write(file, to: paths.index)
+            adopt(file)
+        }
     }
 
     public var visible: [Item] { items.values.filter { !$0.hidden } }
@@ -73,21 +106,38 @@ public final class Library {
         return paths.templates.appending(path: "\(item.id).\(ext)")
     }
 
+    public enum MediaSource: Sendable, Equatable {
+        case local(URL)
+        case remote(URL, cache: URL)
+        case missing
+    }
+
+    public func mediaSource(for item: Item) -> MediaSource {
+        if let local = localFile(for: item) { return .local(local) }
+        if let remote = item.mediaURL.flatMap(URL.init(string:)), let target = cachedTemplate(item) { return .remote(remote, cache: target) }
+        return .missing
+    }
+
     public func ensureMedia(_ item: Item) async throws -> URL {
-        if let local = localFile(for: item) {
+        switch mediaSource(for: item) {
+        case .local(let local):
             guard FileManager.default.fileExists(atPath: local.path) else {
                 throw MemeError("\(item.id)'s file is missing: \(local.path).")
             }
             return local
-        }
-        guard let remote = item.mediaURL.flatMap(URL.init(string:)), let target = cachedTemplate(item) else {
+        case .remote(let remote, let target):
+            try await Self.download(remote, to: target)
+            return target
+        case .missing:
             throw MemeError("\(item.id) has no media.")
         }
+    }
+
+    public static func download(_ remote: URL, to target: URL) async throws {
         try Blocklist.check(remote)
         let data = try await HTTP.get(remote)
         try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
         try data.write(to: target, options: .atomic)
-        return target
     }
 
     public func uniqueID(prefix: String) -> String {

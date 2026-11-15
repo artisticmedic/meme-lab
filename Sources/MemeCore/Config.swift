@@ -8,14 +8,19 @@ public struct Config: Codable, Equatable, Sendable {
     public var maxSeconds: Double
     public var rivHost: String
     public var rivDropDir: String?
+    /// A shell command the panel's Ask agent button runs, with the prompt in MEME_PROMPT. Empty hides the button.
+    public var agentCommand: String
+    /// Tiles move all the time instead of only under the pointer.
+    public var animateAlways: Bool
 
     public static let defaults = Config(
-        libraryDir: nil, maxMB: 8, width: 480, fps: 15, maxSeconds: 6, rivHost: "m1", rivDropDir: nil
+        libraryDir: nil, maxMB: 8, width: 480, fps: 15, maxSeconds: 6, rivHost: "m1", rivDropDir: nil,
+        agentCommand: "", animateAlways: false
     )
 
     public init(
         libraryDir: String?, maxMB: Double, width: Int, fps: Int, maxSeconds: Double,
-        rivHost: String, rivDropDir: String?
+        rivHost: String, rivDropDir: String?, agentCommand: String = "", animateAlways: Bool = false
     ) {
         self.libraryDir = libraryDir
         self.maxMB = maxMB
@@ -24,6 +29,8 @@ public struct Config: Codable, Equatable, Sendable {
         self.maxSeconds = maxSeconds
         self.rivHost = rivHost
         self.rivDropDir = rivDropDir
+        self.agentCommand = agentCommand
+        self.animateAlways = animateAlways
     }
 
     /// Missing keys fall back to defaults, so a partial file is valid.
@@ -37,9 +44,11 @@ public struct Config: Codable, Equatable, Sendable {
         maxSeconds = try c.decodeIfPresent(Double.self, forKey: .maxSeconds) ?? d.maxSeconds
         rivHost = try c.decodeIfPresent(String.self, forKey: .rivHost) ?? d.rivHost
         rivDropDir = try c.decodeIfPresent(String.self, forKey: .rivDropDir)
+        agentCommand = try c.decodeIfPresent(String.self, forKey: .agentCommand) ?? d.agentCommand
+        animateAlways = try c.decodeIfPresent(Bool.self, forKey: .animateAlways) ?? d.animateAlways
     }
 
-    public static let keys = ["libraryDir", "maxMB", "width", "fps", "maxSeconds", "rivHost", "rivDropDir"]
+    public static let keys = ["libraryDir", "maxMB", "width", "fps", "maxSeconds", "rivHost", "rivDropDir", "agentCommand", "animateAlways"]
 
     public func value(of key: String) throws -> String {
         switch key {
@@ -50,6 +59,8 @@ public struct Config: Codable, Equatable, Sendable {
         case "maxSeconds": String(maxSeconds)
         case "rivHost": rivHost
         case "rivDropDir": rivDropDir ?? ""
+        case "agentCommand": agentCommand
+        case "animateAlways": String(animateAlways)
         default: throw Config.unknown(key)
         }
     }
@@ -69,6 +80,10 @@ public struct Config: Codable, Equatable, Sendable {
         case "maxSeconds": maxSeconds = try number(Double.self, min: 1, max: 30)
         case "rivHost": rivHost = raw
         case "rivDropDir": rivDropDir = raw.isEmpty ? nil : raw
+        case "agentCommand": agentCommand = raw
+        case "animateAlways":
+            guard let value = Bool(raw) else { throw MemeError("animateAlways must be true or false; got \"\(raw)\".") }
+            animateAlways = value
         default: throw Config.unknown(key)
         }
     }
@@ -96,9 +111,11 @@ public struct ConfigStore: Sendable {
 
     /// Refuses to write when the existing file does not parse, so a hand-edited file is never overwritten.
     public func set(_ key: String, to value: String) throws -> Config {
-        var config = try load()
-        try config.set(key, to: value)
-        try JSONFile.write(config, to: url)
-        return config
+        try FileLock.holding(url) {
+            var config = try load()
+            try config.set(key, to: value)
+            try JSONFile.write(config, to: url)
+            return config
+        }
     }
 }

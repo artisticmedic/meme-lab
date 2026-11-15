@@ -3,13 +3,19 @@ import Darwin
 import Foundation
 import MemeCore
 
-@main
-struct Meme: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
+public struct Meme: AsyncParsableCommand {
+    public init() {}
+
+    /// Arguments that mean the binary was started as the command, not as the app.
+    public static var verbs: Set<String> {
+        Set(configuration.subcommands.compactMap { $0.configuration.commandName } + ["help", "-h", "--help", "--version"])
+    }
+
+    public static let configuration = CommandConfiguration(
         commandName: "meme",
         abstract: "Tim's Astonishing Meme Laboratory: find, caption and deliver meme GIFs.",
         discussion: "Reads print JSON. Errors are one plain sentence on stderr. Run `meme sync` first.",
-        version: "0.1.0",
+        version: About.version,
         subcommands: [
             SearchCommand.self, Info.self, Make.self, Propose.self, Send.self, Pick.self, Picks.self, Browse.self, KlipyCommand.self,
             Add.self, Import.self, Untagged.self, Tag.self, Collect.self, Remove.self, Sync.self,
@@ -106,14 +112,15 @@ struct Make: AsyncParsableCommand {
 
 struct Propose: ParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Show finished options in the picker page and wait for Tim to choose one.",
+        abstract: "Show finished options in Meme Lab's panel (or the picker page) and wait for Tim to choose one.",
         discussion: "Prints {\"chosen\": [id], \"note\": \"...\"}. An empty choice with a note means \"change this\". Exit 124 on timeout."
     )
     @Argument(help: "Made ids, in the order to show them.") var ids: [String]
     @Option(name: .customLong("from"), help: "Who is asking, shown on the page (Claude, Codex, Cursor).") var agent: String?
     @Flag(help: "Also post the options to Riv's Meme Lab thread, for Tim on his phone.") var riv = false
     @Option(help: "Seconds to wait.") var timeout: Double = 900
-    @Flag(name: .customLong("no-open"), help: "Print the link instead of opening the browser.") var noOpen = false
+    @Flag(name: .customLong("no-open"), help: "Only mark the menu bar icon, or print the page link, instead of opening either.") var noOpen = false
+    @Flag(help: "Use the browser page even when the app is running.") var page = false
 
     func run() throws {
         let library = try Library.open()
@@ -122,11 +129,16 @@ struct Propose: ParsableCommand {
             throw MemeError("\(notMade.id) is not a finished meme; propose takes ids from `meme make`.")
         }
         let store = StatusStore(url: library.paths.status)
-        try store.update { $0.proposal = MemeCore.Proposal(options: ids, from: agent, createdAt: Date()) }
         if riv {
             let files = items.compactMap { library.localFile(for: $0) }
             let result = try Riv.send(files, caption: "Meme Lab: \(files.count) options\(agent.map { " from \($0)" } ?? ""). Tell your agent which number.", config: library.config)
             say("Posted to Riv: \(result.links.joined(separator: " "))")
+        }
+        if !page, let appAlive = AppBridge.connect(library.paths) {
+            let request = AppRequest(mode: .propose, items: ids, max: 1, from: agent, open: !noOpen)
+            say("The options are in Meme Lab's menu bar panel.")
+            try output(try AppBridge.wait(request, store: store, timeout: timeout, appAlive: appAlive))
+            return
         }
         let picker = try Picker(library: library, mode: .propose(from: agent), ids: ids)
         try waitForChoice(picker, timeout: timeout, open: !noOpen)
@@ -135,13 +147,14 @@ struct Propose: ParsableCommand {
 
 struct Pick: ParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Let Tim pick items in the picker page, and print his picks.",
+        abstract: "Let Tim pick items in Meme Lab's panel (or the picker page), and print his picks.",
         discussion: "Prints {\"chosen\": [ids], \"note\": \"\"}. Exit 124 on timeout."
     )
     @Option(help: "Limit the page to these ids (comma-separated) or the results for these words.") var from: String?
     @Option(help: "Most items Tim may pick.") var max = 2
     @Option(help: "Seconds to wait.") var timeout: Double = 900
-    @Flag(name: .customLong("no-open"), help: "Print the link instead of opening the browser.") var noOpen = false
+    @Flag(name: .customLong("no-open"), help: "Only mark the menu bar icon, or print the page link, instead of opening either.") var noOpen = false
+    @Flag(help: "Use the browser page even when the app is running.") var page = false
 
     func run() throws {
         let library = try Library.open()
@@ -153,9 +166,18 @@ struct Pick: ParsableCommand {
                 : Search.run(SearchQuery(words: from, limit: 30), in: Array(library.items.values)).map(\.id)
             if ids?.isEmpty ?? true { throw MemeError("Nothing in the library matches \"\(from)\".") }
         }
-        let picker = try Picker(library: library, mode: .pick(max: max), ids: ids)
-        let result = try waitForChoice(picker, timeout: timeout, open: !noOpen)
-        try StatusStore(url: library.paths.status).update { $0.picks = result.chosen }
+        let store = StatusStore(url: library.paths.status)
+        let result: PickerResult
+        if !page, let appAlive = AppBridge.connect(library.paths) {
+            let request = AppRequest(mode: .pick, items: ids ?? [], max: max, from: nil, open: !noOpen)
+            say("Pick in Meme Lab's menu bar panel.")
+            result = try AppBridge.wait(request, store: store, timeout: timeout, appAlive: appAlive)
+            try output(result)
+        } else {
+            let picker = try Picker(library: library, mode: .pick(max: max), ids: ids)
+            result = try waitForChoice(picker, timeout: timeout, open: !noOpen)
+        }
+        try store.update { $0.picks = result.chosen }
     }
 }
 
@@ -188,13 +210,19 @@ func waitForChoice(_ picker: Picker, timeout: Double, open: Bool, print printRes
 
 struct Browse: ParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Open the whole library in the browser to look around and pick. Runs until Control-C.",
-        discussion: "Picks made here are saved; an agent reads them with `meme picks`."
+        abstract: "Open the library window, or the library in the browser, to look around and pick.",
+        discussion: "Picks made there are saved; an agent reads them with `meme picks`. The browser page runs until Control-C."
     )
-    @Option(help: "Port on 127.0.0.1. 0 picks a free one.") var port: UInt16 = 0
-    @Flag(name: .customLong("no-open"), help: "Print the link instead of opening the browser.") var noOpen = false
+    @Option(help: "Port on 127.0.0.1 for the page. 0 picks a free one.") var port: UInt16 = 0
+    @Flag(name: .customLong("no-open"), help: "Print the page link instead of opening the browser.") var noOpen = false
+    @Flag(help: "Use the browser page even when the app is installed.") var page = false
 
     func run() throws {
+        if !page, AppBridge.connect(Paths.current(), launchArguments: ["--library"]) != nil {
+            AppBridge.notify("open-library")
+            say("Opened the library window.")
+            return
+        }
         let picker = try Picker(library: try Library.open(), mode: .browse, port: port)
         try picker.start()
         let interrupt = stopOnInterrupt(picker, exitCode: 0)

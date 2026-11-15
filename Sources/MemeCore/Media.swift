@@ -12,7 +12,7 @@ public struct MediaInfo: Equatable, Sendable {
 
 public enum Media {
     public static let extensions: Set<String> = ["gif", "png", "jpg", "jpeg", "webp", "mp4", "mov", "m4v"]
-    static let videoExtensions: Set<String> = ["mp4", "mov", "m4v"]
+    public static let videoExtensions: Set<String> = ["mp4", "mov", "m4v"]
 
     public static func probe(_ url: URL) throws -> MediaInfo {
         struct Probe: Decodable {

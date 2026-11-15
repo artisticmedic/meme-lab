@@ -1,5 +1,11 @@
 import Foundation
 
+public enum About {
+    public static let version = "1.0.0"
+    public static let name = "Tim's Astonishing Meme Laboratory"
+    public static let short = "Meme Lab"
+}
+
 public struct MemeError: Error, CustomStringConvertible, Equatable {
     public let description: String
     public init(_ description: String) { self.description = description }
@@ -141,7 +147,7 @@ func fileSize(_ url: URL) throws -> Int {
 }
 
 enum HTTP {
-    static let userAgent = "MemeLab/0.1 (personal meme tool)"
+    static let userAgent = "MemeLab/\(About.version) (https://github.com/artisticmedic/meme-lab)"
 
     /// `label` names the request in errors in place of its URL, for URLs that carry a key.
     static func get(_ url: URL, label: String? = nil) async throws -> Data {
