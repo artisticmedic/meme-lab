@@ -113,15 +113,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSDr
         if library == nil {
             let host = NSHostingController(rootView: LibraryView(state: libraryState).environmentObject(model))
             host.sizingOptions = [.minSize]
-            let window = NSWindow(contentViewController: host)
+            let window = LibraryWindow(contentViewController: host)
             window.title = About.short
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
-            // An empty toolbar only to lower the traffic lights into the 52 pt top bar the SwiftUI columns draw.
-            window.toolbar = NSToolbar()
-            window.toolbarStyle = .unified
-            window.titlebarSeparatorStyle = .none
             window.isReleasedWhenClosed = false
             window.delegate = self
             window.setContentSize(NSSize(width: 1180, height: 760))
@@ -201,5 +197,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSDr
             NSMenuItem(title: "Library", action: #selector(openLibrary), keyEquivalent: "l"),
         ])
         return main
+    }
+}
+
+/// Centres the traffic lights in the 52 pt top bar. A toolbar would place them there too, but it takes every click
+/// in that row, including the search field's. AppKit puts them back on many layout passes, so this runs after each one.
+final class LibraryWindow: NSWindow {
+    override func layoutIfNeeded() {
+        super.layoutIfNeeded()
+        guard !styleMask.contains(.fullScreen), let close = standardWindowButton(.closeButton),
+              let container = close.superview?.superview else { return }
+        let frame = NSRect(x: container.frame.minX, y: self.frame.height - topBarHeight, width: container.frame.width, height: topBarHeight)
+        if container.frame != frame { container.frame = frame }
+        for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+            guard let button = standardWindowButton(kind) else { continue }
+            let y = ((button.superview?.frame.height ?? topBarHeight) - button.frame.height) / 2
+            if button.frame.minY != y { button.setFrameOrigin(NSPoint(x: button.frame.minX, y: y)) }
+        }
     }
 }
