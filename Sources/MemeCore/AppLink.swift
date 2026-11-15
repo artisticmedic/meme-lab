@@ -5,8 +5,14 @@ public enum AppLink {
     /// A distributed notification whose object is a verb: "changed", "open-library" or "open-panel".
     public static let command = Notification.Name("com.timgailey.MemeLab.command")
 
+    /// A process that has exited but not been reaped still answers kill(pid, 0), so zombies count as gone.
     public static func isAlive(_ pid: Int32) -> Bool {
-        pid > 0 && (kill(pid, 0) == 0 || errno == EPERM)
+        guard pid > 0, kill(pid, 0) == 0 || errno == EPERM else { return false }
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.size
+        var name = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        guard sysctl(&name, 4, &info, &size, nil, 0) == 0, size > 0 else { return true }
+        return info.kp_proc.p_stat != SZOMB
     }
 
     public static func appPID(_ store: StatusStore, alive: (Int32) -> Bool = isAlive) -> Int32? {

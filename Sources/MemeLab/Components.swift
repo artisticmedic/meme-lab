@@ -241,7 +241,8 @@ extension AppModel {
     func dragProvider(_ item: Item) -> NSItemProvider {
         guard let file = localFile(item), let provider = NSItemProvider(contentsOf: file) else { return NSItemProvider() }
         // Without a name, Finder and Discord call every drop "GIF image".
-        let name = item.title.replacingOccurrences(of: "[/:\\\\]", with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
+        let name = item.title.replacingOccurrences(of: "[/:\\\\\\n\\r]", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: ".")))
         provider.suggestedName = String((name.isEmpty ? item.id : name).prefix(60))
         return provider
     }

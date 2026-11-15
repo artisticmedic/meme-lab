@@ -65,6 +65,18 @@ struct AppLinkTests {
         #expect(!AppLink.isAlive(0))
         #expect(!AppLink.isAlive(Int32.max))
     }
+
+    @Test func anUnreapedChildIsNotAlive() throws {
+        var pid: pid_t = 0
+        let argv: [UnsafeMutablePointer<CChar>?] = [strdup("/usr/bin/true"), nil]
+        defer { argv.forEach { free($0) } }
+        #expect(posix_spawn(&pid, "/usr/bin/true", nil, nil, argv, nil) == 0)
+        Thread.sleep(forTimeInterval: 0.3)
+        #expect(kill(pid, 0) == 0, "the child should still be a zombie")
+        #expect(!AppLink.isAlive(pid))
+        var status: Int32 = 0
+        waitpid(pid, &status, 0)
+    }
 }
 
 struct LibrarySaveTests {

@@ -124,6 +124,8 @@ final class MediaLayerView: NSView {
         layer?.masksToBounds = true
         imageLayer.contentsGravity = .resizeAspectFill
         layer?.addSublayer(imageLayer)
+        // SwiftUI's onHover did not fire over this view in the guest; a tracking area does, in the panel and the window.
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
     }
 
     required init?(coder: NSCoder) { fatalError("not used from a nib") }
@@ -142,11 +144,10 @@ final class MediaLayerView: NSView {
         imageLayer.contentsScale = window?.backingScaleFactor ?? 2
     }
 
-    // SwiftUI's onHover did not fire for tiles in the guest; an AppKit tracking area does, in the panel and the window.
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    /// No mouseExited arrives once the view leaves its window, so a tile would keep playing.
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil { onHover?(false) }
     }
 
     override func mouseEntered(with event: NSEvent) { onHover?(true) }

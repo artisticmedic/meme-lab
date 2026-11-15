@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSDr
     private var panel: PanelController!
     private var library: NSWindow?
     private var waitingCommand: DispatchSourceProcess?
+    private var watchedRequest: String?
     private var openedRequest: String?
 
     func applicationDidFinishLaunching(_ note: Notification) {
@@ -73,13 +74,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSDr
         guard let request = status.request else {
             waitingCommand?.cancel()
             waitingCommand = nil
+            watchedRequest = nil
             return
         }
         // The waiting command may be killed without a chance to withdraw its request.
-        if waitingCommand?.handle != request.pid {
+        if watchedRequest != request.id {
             waitingCommand?.cancel()
+            watchedRequest = request.id
             let source = DispatchSource.makeProcessSource(identifier: request.pid, eventMask: .exit, queue: .main)
-            // An exited command that its parent has not reaped yet still answers kill(pid, 0), so withdraw here, not by liveness.
             let id = request.id, store = model.store
             source.setEventHandler { [weak self] in
                 AppLink.withdraw(id, store: store)
