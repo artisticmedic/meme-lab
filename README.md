@@ -55,3 +55,7 @@ swift test
 ```
 
 The pipeline tests render generated clips through ffmpeg and gifski and drive the picker over HTTP. They use no network. `seed/vibes.json` holds the bundled template descriptions; `scripts/gen-seed.sh` regenerates `Sources/MemeCore/SeedVibesData.swift` from it.
+
+## License
+
+MIT. See [LICENSE](LICENSE). The license covers the code only: template images and saved GIFs are not part of the repository.
