@@ -81,8 +81,6 @@ struct LibraryView: View {
         return urls
     }
 
-    // MARK: Sidebar
-
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 9) {
@@ -144,8 +142,6 @@ struct LibraryView: View {
         }
         .buttonStyle(.plain)
     }
-
-    // MARK: Grid
 
     private var main: some View {
         let items = model.items(state.shelf, matching: state.query)
@@ -369,7 +365,6 @@ struct DetailPane: View {
     }
 }
 
-/// Text that saves when Return is pressed or the field loses focus.
 struct EditableField: View {
     let title: String
     let value: String

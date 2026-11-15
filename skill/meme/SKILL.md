@@ -5,7 +5,7 @@ description: Makes captioned meme GIFs with Meme Lab, the `meme` command. Use wh
 
 # Meme Lab
 
-`meme` is a local command. It searches a small library, renders captions in about a second, shows options in a browser page and delivers the result. It never thinks: reading the vibes, writing the captions and judging the options is your job.
+`meme` is the command side of the Meme Lab menu bar app. It searches a small library, renders captions in about a second, shows options in the app's panel and delivers the result. It never thinks: reading the vibes, writing the captions and judging the options is your job.
 
 Every read prints JSON. Errors are one plain sentence on stderr. `meme <command> --help` documents each command.
 
@@ -39,7 +39,7 @@ Every read prints JSON. Errors are one plain sentence on stderr. `meme <command>
    ```
    meme propose m-abcde m-fghij m-klmno m-pqrst --from Codex
    ```
-   - The command opens the picker page and waits, up to 15 minutes by default. Tell Tim the page is open, then run it.
+   - The command opens Meme Lab's menu bar panel with the numbered options and waits, up to 15 minutes by default. It starts the app if needed. Without the app it opens a browser page instead. Tell Tim the options are up, then run it.
    - It prints `{"chosen": ["m-fghij"], "note": ""}`.
    - If `chosen` is empty and `note` says what to change ("2, shorter caption"), re-render only that option and propose again.
    - Exit 124 means nobody chose. Ask Tim in chat instead.
@@ -80,12 +80,12 @@ meme klipy cat typing --copy
   ```
 - **Collections:** `meme collect <id> work`, and `meme search --collection work`.
 - **Remove:** `meme remove <id>`. Saved and made files go to the Trash; templates are hidden.
-- **Browse:** when Tim wants to look around himself, start `meme browse` in the background. His picks land in `meme picks`, and "Copy prompt" on the page hands them to any agent.
-- **Settings:** `meme get` and `meme set <key> <value>`: `maxMB`, `width`, `fps`, `maxSeconds`, `libraryDir`.
+- **Browse:** when Tim wants to look around himself, run `meme browse`. It opens the library window and returns. His picks land in `meme picks`, and "Copy prompt" in the panel hands them to any agent.
+- **Settings:** `meme get` and `meme set <key> <value>`: `maxMB`, `width`, `fps`, `maxSeconds`, `libraryDir`, `agentCommand`, `animateAlways`. The app picks up changes at once.
 
 ## Files
 
-- `~/Library/Application Support/Meme Lab/`: `config.json`, `status.json` (picks, a pending proposal, the last made meme) and `index.json`.
+- `~/Library/Application Support/Meme Lab/`: `config.json`, `status.json` (picks, a waiting request, the running app, the last made meme) and `index.json`.
 - `~/Pictures/Meme Lab/`: `Saved/` and `Made/`.
 - `~/Library/Caches/Meme Lab/`: template images and strips.
 - `MEME_LAB_HOME=<folder>` moves all three, for tests.

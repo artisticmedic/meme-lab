@@ -10,7 +10,6 @@ public struct Config: Codable, Equatable, Sendable {
     public var rivDropDir: String?
     /// A shell command the panel's Ask agent button runs, with the prompt in MEME_PROMPT. Empty hides the button.
     public var agentCommand: String
-    /// Tiles move all the time instead of only under the pointer.
     public var animateAlways: Bool
 
     public static let defaults = Config(

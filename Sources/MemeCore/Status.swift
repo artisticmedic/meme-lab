@@ -1,6 +1,5 @@
 import Foundation
 
-/// A waiting `meme propose` or `meme pick`, shown in the app's panel.
 public struct AppRequest: Codable, Equatable, Sendable {
     public enum Mode: String, Codable, Sendable { case propose, pick }
 
@@ -63,7 +62,6 @@ public struct Status: Codable, Equatable, Sendable {
     public var waitingForPick = false
     public var lastMade: String?
     public var picker: PickerState?
-    /// The running app, if any.
     public var app: AppState?
     public var updatedAt: Date?
 

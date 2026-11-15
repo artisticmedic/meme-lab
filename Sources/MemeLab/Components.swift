@@ -2,7 +2,6 @@ import AppKit
 import MemeCore
 import SwiftUI
 
-/// Surfaces for the window, the same in both appearances as No Orange Dot's.
 enum Surface {
     private static func pair(_ light: NSColor, _ dark: NSColor) -> Color {
         Color(nsColor: NSColor(name: nil) { $0.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light })
@@ -15,7 +14,6 @@ enum Surface {
     static let border = pair(hex(0x000000, 0.09), hex(0x3A3C40))
 }
 
-/// Every button with words on it. `prominent` inverts it: label-colour fill, background-colour text.
 struct PillButtonStyle: ButtonStyle {
     var prominent = false
     var selected = false
@@ -35,7 +33,6 @@ struct PillButtonStyle: ButtonStyle {
     }
 }
 
-/// A symbol-only button with a 34 pt target.
 struct IconButton: View {
     let symbol: String
     let label: String
@@ -129,7 +126,6 @@ struct RowDivider: View {
     var body: some View { Divider().padding(.leading, 14) }
 }
 
-/// A word in a pill, with an optional remove button: tags, collections and picks.
 struct Chip: View {
     let text: String
     var remove: (() -> Void)?
@@ -149,7 +145,6 @@ struct Chip: View {
     }
 }
 
-/// Lays children out in rows, wrapping when a row is full.
 struct FlowLayout: SwiftUI.Layout {
     var spacing: CGFloat = 6
 
@@ -178,7 +173,6 @@ struct FlowLayout: SwiftUI.Layout {
     }
 }
 
-/// The system sidebar material, so the window's left column picks up the desktop behind it.
 struct SidebarBackground: NSViewRepresentable {
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
@@ -190,7 +184,6 @@ struct SidebarBackground: NSViewRepresentable {
     func updateNSView(_ view: NSVisualEffectView, context: Context) {}
 }
 
-/// One tile in a grid: the moving picture, its title, and whether it is picked, selected or numbered.
 struct Tile: View {
     @EnvironmentObject var model: AppModel
     let item: Item
@@ -246,7 +239,6 @@ struct Tile: View {
 }
 
 extension AppModel {
-    /// The file itself, so dropping a tile into Discord or Finder uploads or copies it.
     func dragProvider(_ item: Item) -> NSItemProvider {
         guard let file = localFile(item) else { return NSItemProvider() }
         return NSItemProvider(contentsOf: file) ?? NSItemProvider()

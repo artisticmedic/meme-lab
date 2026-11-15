@@ -111,7 +111,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSDr
             window.setFrameAutosaveName("LibraryWindow")
             library = window
         }
-        // A real window: Dock icon, menus and Command-Tab while it is open.
         NSApp.setActivationPolicy(.regular)
         DispatchQueue.main.async { [weak self] in
             NSApp.activate()
@@ -138,8 +137,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSDr
         guard (notification.object as? NSWindow) === library else { return }
         DispatchQueue.main.async { NSApp.setActivationPolicy(.accessory) }
     }
-
-    // MARK: Files dropped on the menu bar icon
 
     func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         Self.files(sender).isEmpty ? [] : .copy

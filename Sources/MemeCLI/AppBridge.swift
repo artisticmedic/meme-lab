@@ -2,9 +2,7 @@ import AppKit
 import ArgumentParser
 import MemeCore
 
-/// The command's side of the app: finds or starts Meme Lab and waits on its panel.
 enum AppBridge {
-    /// The app bundle holding this executable, when it runs from one.
     static var bundle: URL? {
         let executable = URL(fileURLWithPath: Bundle.main.executablePath ?? CommandLine.arguments[0]).resolvingSymlinksInPath()
         let bundle = executable.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -15,7 +13,6 @@ enum AppBridge {
         AppLink.isAlive(pid) && NSRunningApplication(processIdentifier: pid)?.bundleIdentifier == AppLink.bundleID
     }
 
-    /// The running app for these paths, started first if needed. Returns a liveness check, or nil when there is no app to use.
     /// With MEME_LAB_HOME set it never starts one, because `open` would not pass the variable on.
     static func connect(_ paths: Paths, launchArguments: [String] = ["--quiet"]) -> (() -> Bool)? {
         let store = StatusStore(url: paths.status)

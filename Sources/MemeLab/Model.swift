@@ -34,8 +34,7 @@ enum Shelf: Hashable {
     }
 }
 
-/// The app's view of the library, the status file and the settings. The files stay the source of truth: every change is
-/// written straight back, and edits from `meme` or by hand are picked up as they land.
+/// The files stay the source of truth: every change is written straight back, and edits from `meme` or by hand are picked up as they land.
 @MainActor
 final class AppModel: ObservableObject {
     let paths: Paths
@@ -114,8 +113,6 @@ final class AppModel: ObservableObject {
     /// Shows a status without writing it, for `--render`.
     func stage(_ staged: Status) { status = staged }
 
-    // MARK: Reading
-
     var collections: [String] { Array(Set(items.flatMap(\.collections))).sorted { $0.localizedStandardCompare($1) == .orderedAscending } }
 
     func count(_ shelf: Shelf) -> Int { pool(shelf).count }
@@ -131,7 +128,6 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Search results in score order; otherwise the newest first for clips and made memes, the most popular for the rest.
     func items(_ shelf: Shelf, matching query: String, only ids: [String] = []) -> [Item] {
         var pool = pool(shelf)
         if !ids.isEmpty {
@@ -169,8 +165,6 @@ final class AppModel: ObservableObject {
         let picked = status.picks.count
         return "\(items.count) memes." + (picked > 0 ? " \(picked) picked." : "")
     }
-
-    // MARK: Changing
 
     static let trayLimit = 4
 
@@ -291,8 +285,7 @@ final class AppModel: ObservableObject {
     }
 }
 
-/// Calls back on the main queue when anything in a folder is added, removed or replaced. Atomic writes replace files,
-/// so watching the folder, not the files, catches every save.
+/// Atomic writes replace files, so watching the folder, not the files, catches every save.
 final class FolderWatcher {
     private let source: DispatchSourceFileSystemObject
 

@@ -4,7 +4,6 @@ import ImageIO
 import MemeCore
 import SwiftUI
 
-/// Local files for items, downloading a template the first time it is shown. One download per file at a time.
 @MainActor
 final class MediaStore {
     static let shared = MediaStore()
@@ -27,7 +26,6 @@ final class MediaStore {
     }
 }
 
-/// Decoded frames of a still or animated image, scaled down for the size they are shown at.
 struct Frames: @unchecked Sendable {
     let images: [CGImage]
     let delays: [Double]
@@ -48,7 +46,6 @@ enum FrameCache {
 
     static let maxFrames = 120
 
-    /// The first frame only, unless `moving`: tiles show a still until the pointer is on them.
     static func frames(_ url: URL, maxPixel: Int, moving: Bool) async -> Frames? {
         let key = "\(url.path)#\(maxPixel)#\(moving)" as NSString
         if let hit = cache.object(forKey: key) { return hit.frames }
@@ -110,7 +107,6 @@ enum FrameCache {
     }
 }
 
-/// Shows frames in a layer, cropped to fill or fitted, and moves only while `playing`. Videos play muted on a loop.
 final class MediaLayerView: NSView {
     var frames: Frames? { didSet { refresh() } }
     var video: URL? { didSet { if oldValue != video { stopVideo(); refresh() } } }
@@ -208,7 +204,6 @@ struct MediaLayer: NSViewRepresentable {
     }
 }
 
-/// An item's picture: loads in the background, shows the first frame, and moves while `playing`.
 struct MediaPreview: View {
     @EnvironmentObject var model: AppModel
     let item: Item

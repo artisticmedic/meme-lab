@@ -1,6 +1,5 @@
 import AppKit
 
-/// The flask: the menu bar icon, the window header mark and the app icon.
 @MainActor
 enum Mark {
     /// Drawn on an 18 pt canvas, y up.
@@ -24,10 +23,8 @@ enum Mark {
         liquid.curve(to: p(13.1, 7.4), controlPoint1: p(10.3, 8.4), controlPoint2: p(11.8, 6.4))
 
         let details = NSBezierPath()
-        // The grin.
         details.move(to: p(7.4, 5.0))
         details.curve(to: p(10.6, 5.0), controlPoint1: p(8.2, 3.9), controlPoint2: p(9.8, 3.9))
-        // A rising bubble, which the waiting dot replaces.
         if !waiting { details.appendOval(in: NSRect(x: 12.6 * s, y: 12.4 * s, width: 1.8 * s, height: 1.8 * s)) }
         for path in [outline, liquid, details] {
             path.lineWidth = 1.5 * s
@@ -37,7 +34,6 @@ enum Mark {
         return (outline, liquid, details)
     }
 
-    /// A template image. While an agent waits, a filled dot sits at the top right.
     static func menuBarIcon(waiting: Bool) -> NSImage {
         let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
             let (outline, liquid, details) = strokes(scale: 1, waiting: waiting)
@@ -51,7 +47,6 @@ enum Mark {
         return image
     }
 
-    /// The mark in the label colour, for window and panel headers.
     static func header(size: CGFloat) -> NSImage {
         let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { _ in
             let (outline, liquid, details) = strokes(scale: size / 18, waiting: false)

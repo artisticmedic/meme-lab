@@ -2,7 +2,7 @@ import AppKit
 import MemeCLI
 import MemeCore
 
-// One binary: run as `meme`, or with a verb, it is the command; opened as the app, it is the menu bar app.
+// Run as `meme`, a bare call prints help instead of starting the app.
 let arguments = Array(CommandLine.arguments.dropFirst())
 let invokedAs = (CommandLine.arguments.first as NSString?)?.lastPathComponent
 if invokedAs == "meme" || arguments.first.map(Meme.verbs.contains) == true {

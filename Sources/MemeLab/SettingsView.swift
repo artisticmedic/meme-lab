@@ -159,7 +159,6 @@ private struct AgentCommandRow: View {
     }
 }
 
-/// Links `~/.local/bin/meme` to this app's binary, so agents can run the app as a command.
 private struct CommandLinkRow: View {
     @EnvironmentObject var model: AppModel
     @State private var linked = CommandLink.isLinked

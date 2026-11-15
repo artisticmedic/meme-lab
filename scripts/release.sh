@@ -9,7 +9,8 @@ VERSION="$(cat VERSION)"
 APP="$ROOT/build/Tim's Astonishing Meme Laboratory.app"
 ZIP="$ROOT/build/Meme-Lab-$VERSION.zip"
 ./scripts/build-app.sh
-codesign -dv "$APP" 2>&1 | grep -q "Authority=Developer ID Application" || { echo "The app is not signed with a Developer ID; it cannot be notarized."; exit 1; }
+SIGNER="$(codesign -dvv "$APP" 2>&1)"
+[[ "$SIGNER" == *"Authority=Developer ID Application"* ]] || { echo "The app is not signed with a Developer ID; it cannot be notarized."; exit 1; }
 rm -f "$ZIP"
 ditto -c -k --keepParent "$APP" "$ZIP"
 xcrun notarytool submit "$ZIP" --keychain-profile "${NOTARY_PROFILE:-onair}" --wait

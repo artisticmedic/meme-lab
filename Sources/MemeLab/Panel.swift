@@ -1,10 +1,10 @@
 import AppKit
+import Carbon.HIToolbox
 import MemeCore
 import SwiftUI
 
 enum PanelAction { case library, quit }
 
-/// What the panel shows that is not saved anywhere: the search, the tab, the keyboard focus and unsent text.
 @MainActor
 final class PanelState: ObservableObject {
     @Published var query = ""
@@ -32,7 +32,6 @@ final class PanelState: ObservableObject {
         return model.items(shelf, matching: query)
     }
 
-    /// A new request starts with nothing chosen and an empty note.
     func sync(with request: AppRequest?) {
         guard request?.id != requestID else { return }
         requestID = request?.id
@@ -48,7 +47,6 @@ final class PanelState: ObservableObject {
         focus = focus.map { min(max($0 + delta, 0), count - 1) } ?? 0
     }
 
-    /// Click or Return on a tile: picks it, or chooses it as the answer.
     func activate(_ item: Item) {
         guard let request else {
             model.togglePick(item.id)
@@ -277,7 +275,6 @@ private final class PanelWindow: NSPanel {
     }
 }
 
-/// The panel under the menu bar icon: a borderless glass surface, as in Shortercat and No Orange Dot.
 @MainActor
 final class PanelController: NSObject, NSWindowDelegate {
     private let panel = PanelWindow()
@@ -379,12 +376,12 @@ final class PanelController: NSObject, NSWindowDelegate {
             return true
         }
         switch event.keyCode {
-        case 53: close()                                                   // escape
-        case 126: state.move(-2)                                           // up
-        case 125: state.move(2)                                            // down
-        case 123 where !editingText: state.move(-1)                        // left
-        case 124 where !editingText: state.move(1)                         // right
-        case 36, 76:                                                       // return, keypad enter
+        case UInt16(kVK_Escape): close()
+        case UInt16(kVK_UpArrow): state.move(-2)
+        case UInt16(kVK_DownArrow): state.move(2)
+        case UInt16(kVK_LeftArrow) where !editingText: state.move(-1)
+        case UInt16(kVK_RightArrow) where !editingText: state.move(1)
+        case UInt16(kVK_Return), UInt16(kVK_ANSI_KeypadEnter):
             if let request, request.mode == .propose || !state.chosen.isEmpty {
                 if state.chosen.isEmpty, let focus = state.focus, focus < state.list.count { state.activate(state.list[focus]) }
                 if !state.chosen.isEmpty || !state.note.isEmpty { state.send() }

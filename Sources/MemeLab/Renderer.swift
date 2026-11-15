@@ -2,7 +2,6 @@ import AppKit
 import MemeCore
 import SwiftUI
 
-/// `--render <folder>`: PNGs of each surface in light and dark, drawn off screen from the real library.
 @MainActor
 enum Renderer {
     static func run(into folder: URL) -> Int32 {
