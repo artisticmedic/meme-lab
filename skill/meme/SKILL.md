@@ -1,6 +1,6 @@
 ---
 name: meme
-description: Makes captioned meme GIFs with Meme Lab, the `meme` command. Use when Tim asks for a meme or reaction GIF, "a meme that combines these two vibes", a caption on a clip, or something for Discord.
+description: Makes captioned meme GIFs with Meme Lab, the `meme` command. Use when Tim asks for a meme or reaction GIF, to combine two vibes, to caption a clip, for Discord, or to browse, tag or refresh the meme library.
 ---
 
 # Meme Lab

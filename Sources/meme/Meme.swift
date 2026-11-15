@@ -206,7 +206,7 @@ struct Browse: ParsableCommand {
     }
 }
 
-struct KlipyCommand: AsyncParsableCommand {
+struct KlipyCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "klipy",
         abstract: "Search KLIPY in its own grid and let Tim pick one to share as a link. Needs a KLIPY_API_KEY secret.",
@@ -217,11 +217,11 @@ struct KlipyCommand: AsyncParsableCommand {
     @Option(help: "Seconds to wait.") var timeout: Double = 900
     @Flag(name: .customLong("no-open"), help: "Print the link instead of opening the browser.") var noOpen = false
 
-    func run() async throws {
+    func run() throws {
         let library = try Library.open()
         let key = try Klipy.key()
         let query = words.joined(separator: " ")
-        let results = try await Klipy.search(query, key: key)
+        let results = try Klipy.searchWaiting(query, key: key)
         let picker = try Picker(library: library, mode: .klipy(query: query, results: results, key: key), ids: [])
         let result = try waitForChoice(picker, timeout: timeout, open: !noOpen, print: false)
         if copy, let link = result.link { try Clipboard.copyText(link) }

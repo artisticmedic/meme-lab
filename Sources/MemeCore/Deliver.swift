@@ -4,7 +4,7 @@ import Foundation
 public enum Clipboard {
     /// Puts the file itself on the clipboard, so pasting into Discord uploads it.
     public static func copyFile(_ url: URL, environment: [String: String] = ProcessInfo.processInfo.environment) throws {
-        let board = environment["MEME_LAB_PASTEBOARD"].map { NSPasteboard(name: NSPasteboard.Name($0)) } ?? .general
+        let board = pasteboard(environment)
         board.clearContents()
         guard board.writeObjects([url as NSURL]) else {
             throw MemeError("The clipboard refused \(url.lastPathComponent).")
@@ -12,9 +12,14 @@ public enum Clipboard {
     }
 
     public static func copyText(_ text: String, environment: [String: String] = ProcessInfo.processInfo.environment) throws {
-        let board = environment["MEME_LAB_PASTEBOARD"].map { NSPasteboard(name: NSPasteboard.Name($0)) } ?? .general
+        let board = pasteboard(environment)
         board.clearContents()
         guard board.setString(text, forType: .string) else { throw MemeError("The clipboard refused the link.") }
+    }
+
+    /// `MEME_LAB_PASTEBOARD` names a private pasteboard, so tests never touch Tim's clipboard.
+    private static func pasteboard(_ environment: [String: String]) -> NSPasteboard {
+        environment["MEME_LAB_PASTEBOARD"].map { NSPasteboard(name: NSPasteboard.Name($0)) } ?? .general
     }
 }
 

@@ -266,16 +266,22 @@ struct KlipyTests {
     static let fixture = Data("""
     {"result": true, "data": {"data": [
       {"slug": "b-second", "title": "B", "file": {"md": {"gif": {"url": "https://static.klipy.com/ii/x/b.gif?k=1"}}, "sm": {"webp": {"url": "https://static.klipy.com/ii/x/b.webp"}}}},
-      {"slug": "a-first", "title": "A", "file": {"hd": {"mp4": {"url": "https://static.klipy.com/ii/x/a.mp4"}}}}
+      {"slug": "a-first", "title": "A", "file": {"hd": {"mp4": {"url": "https://static.klipy.com/ii/x/a.mp4"}, "jpg": {"url": "https://static.klipy.com/ii/x/a.jpg"}}}},
+      {"slug": "c-video", "file": {"md": {"webm": {"url": "https://static.klipy.com/ii/x/c.webm"}}}},
+      {"title": "odd entry", "file": []}
     ], "current_page": 1, "per_page": 24, "has_next": false}}
     """.utf8)
 
     @Test func keepsKlipysOrderAndEveryResult() throws {
         let results = try Klipy.results(from: Self.fixture)
-        #expect(results.map(\.slug) == ["b-second", "a-first"])
+        #expect(results.map(\.slug) == ["b-second", "a-first", "c-video", "result-4"])
         #expect(results[0].link == "https://static.klipy.com/ii/x/b.gif?k=1")
-        #expect(results[0].preview.hasSuffix("b.webp"))
-        #expect(results[1].link.hasSuffix("a.mp4"))
+        #expect(results[0].preview?.hasSuffix("b.webp") == true)
+        #expect(results[1].link?.hasSuffix("a.mp4") == true)
+        #expect(results[1].preview?.hasSuffix("a.jpg") == true)
+        #expect(results[2].previewIsVideo)
+        #expect(results[3].link == nil)
+        #expect(throws: MemeError.self) { try Klipy.results(from: Data("not json".utf8)) }
     }
 
     /// A stand-in `secrets` helper, ahead of the real one on the PATH.
@@ -301,5 +307,17 @@ struct KlipyTests {
         #expect(error?.description.hasPrefix("KLIPY search is off") == true)
         #expect(Klipy.configured(environment: env.merging(["KLIPY_API_KEY": "k"]) { $1 }))
         #expect(try Klipy.key(environment: ["KLIPY_API_KEY": "k"]) == "k")
+    }
+}
+
+struct HTTPErrorTests {
+    @Test func errorsNameTheRequestNotTheURL() async throws {
+        do {
+            _ = try await HTTP.get(URL(string: "http://127.0.0.1:1/api/v1/secret-key-123/gifs/search")!, label: "a KLIPY search")
+            Issue.record("Expected the request to fail.")
+        } catch let error as MemeError {
+            #expect(!error.description.contains("secret-key-123"))
+            #expect(error.description.contains("a KLIPY search"))
+        }
     }
 }

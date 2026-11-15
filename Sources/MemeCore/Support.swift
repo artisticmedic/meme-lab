@@ -143,14 +143,27 @@ func fileSize(_ url: URL) throws -> Int {
 enum HTTP {
     static let userAgent = "MemeLab/0.1 (personal meme tool)"
 
-    static func get(_ url: URL) async throws -> Data {
+    /// `label` names the request in errors in place of its URL, for URLs that carry a key.
+    static func get(_ url: URL, label: String? = nil) async throws -> Data {
+        let name = label ?? url.absoluteString
         var request = URLRequest(url: url)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 30
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch let error as URLError {
+            throw MemeError("Could not reach \(url.host() ?? "the server") for \(name) (URL error \(error.code.rawValue)).")
+        }
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw MemeError("\(url.host() ?? "The server") answered HTTP \(http.statusCode) for \(url.absoluteString).")
+            throw HTTPStatusError(status: http.statusCode, description: "\(url.host() ?? "The server") answered HTTP \(http.statusCode) for \(name).")
         }
         return data
     }
+}
+
+struct HTTPStatusError: Error, CustomStringConvertible {
+    let status: Int
+    let description: String
 }

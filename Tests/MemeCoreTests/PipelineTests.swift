@@ -123,11 +123,18 @@ struct PipelineTests {
         try picker.start()
         defer { picker.stop() }
         let token = URLComponents(url: picker.url, resolvingAgainstBaseURL: false)!.queryItems!.first { $0.name == "t" }!.value!
-        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(picker.url.port!)/api/choose")!)
-        request.httpMethod = "POST"
-        request.setValue(token, forHTTPHeaderField: "X-Meme-Token")
-        request.httpBody = try JSONEncoder().encode(PickerResult(chosen: ["b-second"], note: ""))
-        _ = try await URLSession.shared.data(for: request)
+        func choose(_ slugs: [String]) async throws -> Int {
+            var request = URLRequest(url: URL(string: "http://127.0.0.1:\(picker.url.port!)/api/choose")!)
+            request.httpMethod = "POST"
+            request.setValue(token, forHTTPHeaderField: "X-Meme-Token")
+            request.httpBody = try JSONEncoder().encode(PickerResult(chosen: slugs, note: ""))
+            return (try await URLSession.shared.data(for: request).1 as! HTTPURLResponse).statusCode
+        }
+        #expect(try await choose([]) == 400)
+        #expect(try await choose(["not-shown"]) == 400)
+        #expect(try await choose(["result-4"]) == 400)
+        #expect(picker.wait(timeout: 0.2) == nil)
+        #expect(try await choose(["b-second"]) == 200)
         #expect(picker.wait(timeout: 5)?.link == "https://static.klipy.com/ii/x/b.gif?k=1")
     }
 }

@@ -112,7 +112,9 @@ function renderKlipy(grid) {
   if (!state.klipy.length) { grid.append(el("p", { class: "empty" }, "KLIPY found nothing for that.")); return; }
   for (const result of state.klipy) {
     const tile = el("div", { class: "tile" + (selected.includes(result.slug) ? " sel" : ""), tabindex: "0", role: "button", onclick: () => toggle(result.slug), onkeydown: e => { if (e.key === "Enter") toggle(result.slug); } },
-      el("div", { class: "thumb" }, el("img", { src: result.preview, alt: result.title, loading: "lazy" }), el("span", { class: "badge" }, "✓")),
+      el("div", { class: "thumb" }, !result.preview ? el("span", { class: "sub" }, "No preview")
+        : result.previewIsVideo ? (() => { const v = el("video", { muted: "", autoplay: "", loop: "", playsinline: "" }); v.muted = true; v.src = result.preview; return v; })()
+        : el("img", { src: result.preview, alt: result.title, loading: "lazy" }), el("span", { class: "badge" }, "✓")),
       el("div", { class: "name" }, result.title));
     grid.append(tile);
   }
@@ -233,11 +235,19 @@ function setUpKlipySearch(initial) {
   search.value = initial || "";
   search.replaceWith(search.cloneNode(true));
   const box = document.getElementById("search");
+  let latest = 0;
   box.addEventListener("keydown", async e => {
     if (e.key !== "Enter" || !box.value.trim()) return;
-    try { state.klipy = await api("/api/klipy?q=" + encodeURIComponent(box.value.trim())); selected = []; document.getElementById("error").textContent = ""; }
-    catch (err) { document.getElementById("error").textContent = "KLIPY search failed: " + err.message; return; }
-    renderGrid(); renderFooter(); renderStatus();
+    const mine = ++latest;
+    document.getElementById("status").textContent = "Searching KLIPY…";
+    try {
+      const results = await api("/api/klipy?q=" + encodeURIComponent(box.value.trim()));
+      if (mine !== latest) return;
+      state.klipy = results; selected = []; document.getElementById("error").textContent = "";
+    } catch (err) {
+      if (mine === latest) document.getElementById("error").textContent = "KLIPY search failed: " + err.message;
+    }
+    if (mine === latest) { renderGrid(); renderFooter(); renderStatus(); }
   });
 }
 

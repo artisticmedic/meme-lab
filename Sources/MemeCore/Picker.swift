@@ -78,6 +78,7 @@ public final class Picker: @unchecked Sendable {
     private let lock = NSLock()
     private var result: PickerResult?
     private var klipyShown: [Klipy.Result] = []
+    private var klipySeen: [String: String] = [:]
     private var klipyQuery = ""
     private let finished = DispatchSemaphore(value: 0)
 
@@ -106,6 +107,7 @@ public final class Picker: @unchecked Sendable {
         if case .klipy(let query, let results, _) = mode {
             klipyShown = results
             klipyQuery = query
+            for result in results { klipySeen[result.slug] = result.link }
         }
         let token = self.token
         self.items = chosen.map { item in
@@ -182,16 +184,18 @@ public final class Picker: @unchecked Sendable {
             guard case .klipy(_, _, let key) = mode, let words = request.query["q"], !words.isEmpty else {
                 return .text(400, "Search KLIPY with ?q=words.")
             }
-            let found = Self.blocking { try await Klipy.search(words, key: key) }
-            switch found {
-            case .success(let results):
+            do {
+                let results = try Klipy.searchWaiting(words, key: key)
                 lock.lock()
                 klipyShown = results
                 klipyQuery = words
+                for result in results { klipySeen[result.slug] = result.link }
                 lock.unlock()
                 return .json(results)
-            case .failure(let error):
-                return .text(502, "\(error)")
+            } catch let error as MemeError {
+                return .text(502, error.description)
+            } catch {
+                return .text(502, "KLIPY search failed.")
             }
         case ("POST", "/api/picks"):
             guard mode == .browse, let body = try? JSONDecoder().decode(PickerResult.self, from: request.body) else {
@@ -210,19 +214,17 @@ public final class Picker: @unchecked Sendable {
                 return .text(400, "Send {\"chosen\": [ids], \"note\": \"\"}.")
             }
             lock.lock()
-            let shown = klipyShown
+            let seen = klipySeen
             lock.unlock()
-            let known = Set(items.map(\.id) + shown.map(\.slug))
-            let chosen = body.chosen.filter(known.contains)
-            let link = chosen.first.flatMap { slug in shown.first { $0.slug == slug }?.link }
+            if case .klipy = mode {
+                guard body.chosen.count == 1, let slug = body.chosen.first, let link = seen[slug] ?? nil else {
+                    return .text(400, "Pick one KLIPY result that has a link.")
+                }
+                return finish(PickerResult(chosen: [slug], note: body.note, link: link))
+            }
+            let chosen = body.chosen.filter(Set(items.map(\.id)).contains)
             if case .pick(let max) = mode, chosen.count > max { return .text(400, "Pick \(max) at most.") }
-            lock.lock()
-            let first = result == nil
-            if first { result = PickerResult(chosen: chosen, note: body.note, link: link) }
-            lock.unlock()
-            guard first else { return .text(409, "Already sent.") }
-            finished.signal()
-            return .json(PickerResult(chosen: chosen, note: body.note, link: link))
+            return finish(PickerResult(chosen: chosen, note: body.note))
         case ("GET", let path) where path.hasPrefix("/media/"):
             return media(String(path.dropFirst("/media/".count)), range: request.headers["range"])
         default:
@@ -230,16 +232,14 @@ public final class Picker: @unchecked Sendable {
         }
     }
 
-    /// Request handlers run on GCD threads, outside Swift concurrency, so waiting here does not starve the task pool.
-    private static func blocking<T: Sendable>(_ work: @escaping @Sendable () async throws -> T) -> Result<T, Error> {
-        let box = ResultBox<T>()
-        let done = DispatchSemaphore(value: 0)
-        Task {
-            do { box.value = .success(try await work()) } catch { box.value = .failure(error) }
-            done.signal()
-        }
-        done.wait()
-        return box.value!
+    private func finish(_ outcome: PickerResult) -> HTTPResponse {
+        lock.lock()
+        let first = result == nil
+        if first { result = outcome }
+        lock.unlock()
+        guard first else { return .text(409, "Already sent.") }
+        finished.signal()
+        return .json(outcome)
     }
 
     private func media(_ id: String, range: String?) -> HTTPResponse {
@@ -284,8 +284,4 @@ public final class Picker: @unchecked Sendable {
         default: "application/octet-stream"
         }
     }
-}
-
-private final class ResultBox<T>: @unchecked Sendable {
-    var value: Result<T, Error>?
 }
