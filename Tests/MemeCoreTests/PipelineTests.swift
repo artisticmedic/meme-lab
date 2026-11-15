@@ -2,7 +2,6 @@ import Foundation
 import Testing
 @testable import MemeCore
 
-/// End to end through ffmpeg and gifski on generated media; no network.
 @Suite(.serialized)
 struct PipelineTests {
     static func library() throws -> (Library, URL) {

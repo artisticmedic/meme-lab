@@ -15,7 +15,11 @@ struct HTTPResponse: Sendable {
     var body: Data
 
     static func json<T: Encodable>(_ value: T) -> HTTPResponse {
-        HTTPResponse(status: 200, headers: ["Content-Type": "application/json"], body: (try? JSONFile.encoder().encode(value)) ?? Data())
+        do {
+            return HTTPResponse(status: 200, headers: ["Content-Type": "application/json"], body: try JSONFile.encoder().encode(value))
+        } catch {
+            return .text(500, "Could not encode the answer: \(error)")
+        }
     }
 
     static func text(_ status: Int, _ message: String) -> HTTPResponse {
@@ -23,7 +27,6 @@ struct HTTPResponse: Sendable {
     }
 }
 
-/// A small HTTP/1.1 server on 127.0.0.1, one request per connection.
 final class HTTPServer: @unchecked Sendable {
     let port: UInt16
     private let socketFD: Int32
@@ -119,7 +122,7 @@ final class HTTPServer: @unchecked Sendable {
 
     static func write(_ response: HTTPResponse, to client: Int32, head: Bool) {
         let reasons = [200: "OK", 206: "Partial Content", 302: "Found", 400: "Bad Request", 403: "Forbidden",
-                       404: "Not Found", 405: "Method Not Allowed", 409: "Conflict", 416: "Range Not Satisfiable"]
+                       404: "Not Found", 409: "Conflict", 500: "Internal Server Error", 503: "Service Unavailable"]
         var text = "HTTP/1.1 \(response.status) \(reasons[response.status] ?? "OK")\r\n"
         var headers = response.headers
         headers["Content-Length"] = String(response.body.count)

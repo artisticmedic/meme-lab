@@ -64,7 +64,7 @@ struct RenderInput {
     }
 }
 
-struct Plan: Equatable {
+struct Plan {
     var width: CGFloat
     var contentHeight: CGFloat
     var bar: CGFloat
@@ -158,6 +158,7 @@ enum Captions {
             let cased = switch box.style {
             case "upper": text.uppercased()
             case "lower": text.lowercased()
+            case "mock": String(text.enumerated().map { $0.offset % 2 == 0 ? Character($0.element.lowercased()) : Character($0.element.uppercased()) })
             default: text
             }
             return TextBlock(
@@ -276,7 +277,6 @@ enum FFmpegGraph {
 }
 
 public enum Trim {
-    /// "0.4-2.9", "1.5-" (to the end) or "-2" (the first two seconds).
     public static func parse(_ text: String) throws -> ClosedRange<Double>? {
         let trimmed = text.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty { return nil }
@@ -429,7 +429,4 @@ extension Library {
         return (panels, url)
     }
 
-    private func fileSize(_ url: URL) throws -> Int {
-        (try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
-    }
 }

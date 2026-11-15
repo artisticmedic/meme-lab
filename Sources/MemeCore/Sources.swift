@@ -116,7 +116,6 @@ enum Memegen {
         let truncated: Bool
     }
 
-    /// Template id to the file name of its default image, preferring an animated one.
     static func templateFiles(from tree: Tree) -> [String: String] {
         var defaults: [String: [String]] = [:]
         var configs: Set<String> = []
@@ -140,6 +139,7 @@ enum Memegen {
     static func fetch() async throws -> [Item] {
         let treeURL = URL(string: "https://api.github.com/repos/\(repo)/git/trees/main?recursive=1")!
         let tree = try JSONDecoder().decode(Tree.self, from: try await HTTP.get(treeURL))
+        guard !tree.truncated else { throw MemeError("GitHub cut memegen's file list short, so some templates would be missing. Try again later.") }
         let files = templateFiles(from: tree)
         guard !files.isEmpty else { throw MemeError("memegen's file list came back without templates.") }
 
@@ -209,8 +209,6 @@ enum Imgflip {
 
     static func words(_ text: String) -> Set<String> { Set(Search.normalize(text)).subtracting(filler) }
 
-    /// Finds the memegen template that is the same meme: the same words in a name or keyword first, then one name
-    /// of two or more words contained in the other ("Hotline Bling" in "Drake Hotline Bling").
     static func match(_ meme: Response.Meme, in templates: [Item]) -> Item? {
         let name = words(meme.name)
         guard !name.isEmpty else { return nil }

@@ -4,7 +4,7 @@ public enum Kind: String, Codable, CaseIterable, Sendable {
     case template, clip, made
 }
 
-/// What a finished meme may be used for. Ordered from most to least permissive.
+/// Ordered from most to least permissive.
 public enum PostRight: String, Codable, Comparable, Sendable {
     case freely
     case personal
@@ -84,10 +84,8 @@ public struct Item: Codable, Identifiable, Equatable, Sendable {
     public var id: String
     public var kind: Kind
     public var title: String
-    /// memegen, imgflip, saved, recording, wikimedia or made.
     public var source: String
     public var sourceURL: String?
-    /// Remote image for templates, fetched into the cache on first use.
     public var mediaURL: String?
     /// Local file, relative to the library folder.
     public var file: String?

@@ -5,18 +5,14 @@ import ImageIO
 import UniformTypeIdentifiers
 
 public enum CaptionStyle: String, CaseIterable, Codable, Sendable {
-    /// Impact, all capitals, white with a black outline, top and bottom.
     case classic
-    /// A white bar above the picture with black sentence-case text, the current reaction-GIF look.
     case bar
-    /// Bottom-aligned, sentence case, white with an outline.
     case subtitle
-    /// memegen's own text boxes for the template.
     case template
 }
 
 /// One block of text to draw, in canvas points with a top-left origin.
-struct TextBlock: Equatable {
+struct TextBlock {
     var text: String
     var font: String
     var box: CGRect
@@ -32,7 +28,11 @@ enum Fonts {
     static let subtitle = "HelveticaNeue-Bold"
 
     static func memegen(_ name: String) -> String {
-        name == "thick" || name == "impact" ? classic : subtitle
+        switch name {
+        case "thick", "impact": classic
+        case "comic": "ComicSansMS"
+        default: "HelveticaNeue-Medium"
+        }
     }
 }
 
@@ -40,13 +40,16 @@ enum Colors {
     static let white = CGColor(red: 1, green: 1, blue: 1, alpha: 1)
     static let black = CGColor(red: 0, green: 0, blue: 0, alpha: 1)
 
+    /// The CSS names memegen's configs use, plus #RGB and #RRGGBB. Anything else draws white, the usual meme text.
     static func named(_ name: String) -> CGColor {
-        switch name.lowercased() {
-        case "black": black
-        case "red": CGColor(red: 0.85, green: 0.1, blue: 0.1, alpha: 1)
-        case "yellow": CGColor(red: 1, green: 0.9, blue: 0.1, alpha: 1)
-        default: white
+        let names: [String: UInt32] = ["white": 0xFFFFFF, "black": 0x000000, "khaki": 0xF0E68C, "maroon": 0x800000, "palegoldenrod": 0xEEE8AA]
+        var hex = name.lowercased()
+        if hex.hasPrefix("#") {
+            hex.removeFirst()
+            if hex.count == 3 { hex = hex.map { "\($0)\($0)" }.joined() }
         }
+        guard let value = names[name.lowercased()] ?? (hex.count == 6 ? UInt32(hex, radix: 16) : nil) else { return white }
+        return CGColor(red: CGFloat(value >> 16 & 0xFF) / 255, green: CGFloat(value >> 8 & 0xFF) / 255, blue: CGFloat(value & 0xFF) / 255, alpha: 1)
     }
 
     static func outline(for fill: CGColor) -> CGColor {
@@ -105,7 +108,6 @@ enum TextLayout {
 }
 
 public enum CaptionRenderer {
-    /// Draws text blocks (and an optional white bar) into a transparent PNG the size of the canvas.
     static func render(size: CGSize, bar: CGFloat = 0, blocks: [TextBlock], to url: URL) throws {
         let width = Int(size.width)
         let height = Int(size.height)
@@ -160,7 +162,6 @@ public enum CaptionRenderer {
         CTFrameDraw(frame, context)
     }
 
-    /// Height of the white bar for `bar` style: room for the text at a size that suits the width, up to three lines.
     static func barHeight(_ text: String, width: CGFloat) -> CGFloat {
         let size = barFontSize(text, width: width)
         let textHeight = TextLayout.size(of: text, font: Fonts.bar, size: size, width: width * 0.9).height

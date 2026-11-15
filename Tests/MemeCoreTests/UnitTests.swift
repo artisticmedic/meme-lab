@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import Foundation
 import Testing
@@ -194,6 +195,14 @@ struct LayoutTests {
         }
     }
 
+    @Test func colorsAndCases() throws {
+        #expect(Colors.named("khaki").components?.map { Int(($0 * 255).rounded()) } == [240, 230, 140, 255])
+        #expect(Colors.named("#BBB").components?.first == Colors.named("#bbbbbb").components?.first)
+        #expect(Colors.named("no-such-colour") == Colors.white)
+        let boxes = [TextBox(anchorX: 0, anchorY: 0, scaleX: 1, scaleY: 0.2, style: "mock")]
+        #expect(try Captions.templateBlocks(boxes: boxes, captions: ["meme lab"], panel: CGSize(width: 10, height: 10)).first?.text == "mEmE LaB")
+    }
+
     @Test func textShrinksToFit() {
         let big = TextLayout.fittingSize("hi", font: Fonts.classic, box: CGSize(width: 400, height: 100), maxSize: 100)
         let small = TextLayout.fittingSize("a much longer caption that has to wrap onto several lines", font: Fonts.classic, box: CGSize(width: 400, height: 100), maxSize: 100)
@@ -219,9 +228,10 @@ struct DeliveryTests {
     @Test func clipboardUsesTheNamedPasteboard() throws {
         let file = try Scratch.make().appending(path: "x.gif")
         try Data("GIF89a".utf8).write(to: file)
-        let env = ["MEME_LAB_PASTEBOARD": "com.timgailey.memelab.test.\(UUID().uuidString)"]
-        try Clipboard.copyFile(file, environment: env)
-        #expect(Clipboard.fileURL(environment: env)?.path == file.path)
+        let name = "com.timgailey.memelab.test.\(UUID().uuidString)"
+        try Clipboard.copyFile(file, environment: ["MEME_LAB_PASTEBOARD": name])
+        let board = NSPasteboard(name: NSPasteboard.Name(name))
+        #expect((board.readObjects(forClasses: [NSURL.self], options: nil)?.first as? URL)?.path == file.path)
     }
 }
 

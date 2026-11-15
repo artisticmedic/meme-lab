@@ -16,7 +16,6 @@ public struct Paths: Sendable {
         self.defaultLibrary = defaultLibrary
     }
 
-    /// `MEME_LAB_HOME` puts everything under one folder, for tests and guest machines.
     public static func current(environment: [String: String] = ProcessInfo.processInfo.environment) -> Paths {
         if let home = environment["MEME_LAB_HOME"], !home.isEmpty {
             let root = URL(fileURLWithPath: (home as NSString).expandingTildeInPath, isDirectory: true)
@@ -79,16 +78,28 @@ enum Shell {
 
     private final class Collected: @unchecked Sendable { var data = Data() }
 
-    @discardableResult
-    static func run(_ tool: String, _ arguments: [String]) throws -> Data {
+    struct Outcome {
+        let status: Int32
+        let stdout: Data
+        let stderr: String
+    }
+
+    /// Reads stderr on another thread so a full pipe cannot stall it.
+    static func execute(_ tool: String, _ arguments: [String], input: Data? = nil) throws -> Outcome {
         let process = Process()
         process.executableURL = try locate(tool)
         process.arguments = arguments
         let out = Pipe()
         let err = Pipe()
+        let stdin = Pipe()
         process.standardOutput = out
         process.standardError = err
+        process.standardInput = input == nil ? FileHandle.nullDevice : stdin
         try process.run()
+        if let input {
+            stdin.fileHandleForWriting.write(input)
+            try stdin.fileHandleForWriting.close()
+        }
         let stderr = Collected()
         let group = DispatchGroup()
         group.enter()
@@ -99,13 +110,27 @@ enum Shell {
         let stdout = out.fileHandleForReading.readDataToEndOfFile()
         group.wait()
         process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            let lines = String(decoding: stderr.data, as: UTF8.self)
-                .split(separator: "\n").suffix(3).joined(separator: " ")
-            throw MemeError("\(tool) failed: \(lines)")
-        }
-        return stdout
+        return Outcome(
+            status: process.terminationStatus, stdout: stdout,
+            stderr: String(decoding: stderr.data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        )
     }
+
+    @discardableResult
+    static func run(_ tool: String, _ arguments: [String]) throws -> Data {
+        let outcome = try execute(tool, arguments)
+        guard outcome.status == 0 else {
+            throw MemeError("\(tool) failed: \(outcome.stderr.split(separator: "\n").suffix(3).joined(separator: " "))")
+        }
+        return outcome.stdout
+    }
+}
+
+func fileSize(_ url: URL) throws -> Int {
+    guard let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
+        throw MemeError("Could not read the size of \(url.lastPathComponent).")
+    }
+    return size
 }
 
 enum HTTP {

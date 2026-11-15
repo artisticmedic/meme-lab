@@ -11,7 +11,6 @@ public struct SyncReport: Codable, Sendable {
 }
 
 extension Library {
-    /// Pulls memegen's template list and Imgflip's popular list. Images are fetched later, on first use.
     public func sync(now: Date = Date()) async throws -> SyncReport {
         async let memegenItems = Memegen.fetch()
         async let imgflipMemes = Imgflip.fetch()
@@ -98,7 +97,6 @@ extension Library {
         return count
     }
 
-    /// Copies a local file into the library. Adding the same file twice returns the existing item.
     public func add(file: URL, recording: Bool = false, title: String? = nil, tags: [String] = [],
                     sourceURL: String? = nil, licence: String? = nil, attribution: String? = nil,
                     source: String? = nil, post: PostRight? = nil) throws -> Item {
@@ -174,7 +172,6 @@ extension Library {
         return nil
     }
 
-    /// Adds every usable file in a folder (not its subfolders), such as GIF Machine's save folder.
     public func importFolder(_ folder: URL, recording: Bool) throws -> (added: [Item], skipped: [String]) {
         let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
             .filter { Media.extensions.contains($0.pathExtension.lowercased()) }

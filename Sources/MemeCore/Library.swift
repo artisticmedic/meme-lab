@@ -5,7 +5,6 @@ public final class Library {
     public let config: Config
     public internal(set) var items: [String: Item] = [:]
     public var lastSync: Date?
-    /// Imgflip ids from the previous sync, to spot templates new to the popular list.
     public var imgflipTop: [String] = []
 
     private struct IndexFile: Codable {
@@ -74,7 +73,6 @@ public final class Library {
         return paths.templates.appending(path: "\(item.id).\(ext)")
     }
 
-    /// The item's media on disk, downloading a template into the cache the first time it is used.
     public func ensureMedia(_ item: Item) async throws -> URL {
         if let local = localFile(for: item) {
             guard FileManager.default.fileExists(atPath: local.path) else {
@@ -100,7 +98,7 @@ public final class Library {
         }
     }
 
-    /// Moves a saved or made item's file to the Trash. Templates are hidden instead, so a sync does not bring them back.
+    /// Templates are hidden instead, so a sync does not bring them back.
     public func remove(_ id: String) throws -> Item {
         var item = try self.item(id)
         if let file = localFile(for: item), item.file != nil, FileManager.default.fileExists(atPath: file.path) {

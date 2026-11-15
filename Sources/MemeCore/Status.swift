@@ -18,7 +18,6 @@ public struct PickerState: Codable, Equatable, Sendable {
     public var pid: Int32
 }
 
-/// `status.json`: what Meme Lab is doing now, readable and settable by any agent.
 public struct Status: Codable, Equatable, Sendable {
     public var picks: [String] = []
     public var proposal: Proposal?
@@ -36,6 +35,7 @@ public struct StatusStore: Sendable {
 
     public init(url: URL) { self.url = url }
 
+    /// Status only mirrors live state, so a missing or unreadable file starts empty and is replaced on the next update.
     public func load() -> Status {
         (try? JSONFile.decoder().decode(Status.self, from: Data(contentsOf: url))) ?? Status()
     }

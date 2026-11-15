@@ -159,13 +159,20 @@ struct Pick: ParsableCommand {
     }
 }
 
+/// Keep the returned source alive.
+func stopOnInterrupt(_ picker: Picker, exitCode: Int32) -> DispatchSourceSignal {
+    let source = DispatchSource.makeSignalSource(signal: SIGINT, queue: .global())
+    signal(SIGINT, SIG_IGN)
+    source.setEventHandler { picker.stop(); Darwin.exit(exitCode) }
+    source.resume()
+    return source
+}
+
 @discardableResult
 func waitForChoice(_ picker: Picker, timeout: Double, open: Bool) throws -> PickerResult {
     try picker.start()
-    let stop = DispatchSource.makeSignalSource(signal: SIGINT, queue: .global())
-    signal(SIGINT, SIG_IGN)
-    stop.setEventHandler { picker.stop(); Darwin.exit(130) }
-    stop.resume()
+    let interrupt = stopOnInterrupt(picker, exitCode: 130)
+    defer { interrupt.cancel() }
     say("Picker page: \(picker.url.absoluteString)")
     if open { openInBrowser(picker.url) }
     let result = picker.wait(timeout: timeout)
@@ -189,10 +196,8 @@ struct Browse: ParsableCommand {
     func run() throws {
         let picker = try Picker(library: try Library.open(), mode: .browse, port: port)
         try picker.start()
-        let stop = DispatchSource.makeSignalSource(signal: SIGINT, queue: .global())
-        signal(SIGINT, SIG_IGN)
-        stop.setEventHandler { picker.stop(); Darwin.exit(0) }
-        stop.resume()
+        let interrupt = stopOnInterrupt(picker, exitCode: 0)
+        defer { interrupt.cancel() }
         say("Meme Lab is open at \(picker.url.absoluteString)")
         say("Control-C to stop.")
         if !noOpen { openInBrowser(picker.url) }
@@ -260,10 +265,13 @@ struct Send: AsyncParsableCommand {
 
     func run() async throws {
         let library = try Library.open()
-        var item = try library.item(id)
-        let mp4Path = item.made?.mp4.map { library.root.appending(path: $0) }
-        guard let file = mp4 ? mp4Path : await (try? library.ensureMedia(item)) else {
-            throw MemeError(mp4 ? "\(id) has no MP4." : "\(id) has no file to send.")
+        let item = try library.item(id)
+        let file: URL
+        if mp4 {
+            guard let path = item.made?.mp4 else { throw MemeError("\(id) has no MP4.") }
+            file = library.root.appending(path: path)
+        } else {
+            file = try await library.ensureMedia(item)
         }
         var result = Output(id: id, file: file.path)
         if copy || (save == nil && !riv) {
@@ -284,7 +292,7 @@ struct Send: AsyncParsableCommand {
             let text = caption ?? item.made?.captions.first { !$0.isEmpty } ?? item.title
             result.riv = try Riv.send([file], caption: text, config: library.config, dryRun: dryRun)
         }
-        item = try library.update(id) { $0.lastUsed = Date(); $0.useCount += 1 }
+        _ = try library.update(id) { $0.lastUsed = Date(); $0.useCount += 1 }
         try library.save()
         try output(result)
     }

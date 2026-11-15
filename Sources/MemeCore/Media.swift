@@ -45,7 +45,6 @@ public enum Media {
         return MediaInfo(width: width, height: height, duration: frames > 1 ? duration : 0, frames: frames)
     }
 
-    /// Three frames side by side (start, middle, end) so an agent can judge motion from one still image.
     public static func strip(for item: Item, media: URL, info: MediaInfo, into dir: URL) throws -> URL {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let out = dir.appending(path: "\(item.id).png")

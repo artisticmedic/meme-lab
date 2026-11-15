@@ -65,7 +65,6 @@ public enum Search {
         return matched == words.count ? total * 1.5 : total
     }
 
-    /// Small tie-breakers: popular templates, then things Tim has used.
     static func boost(_ item: Item) -> Double {
         var boost = 0.0
         if let rank = item.popularity { boost += Double(101 - min(rank, 100)) / 100 }

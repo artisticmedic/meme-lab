@@ -128,7 +128,7 @@ function toggle(id) {
   const i = selected.indexOf(id);
   if (i >= 0) selected.splice(i, 1);
   else { if (max === 1) selected = []; if (selected.length >= max) selected.shift(); selected.push(id); }
-  if (state.mode === "browse") api("/api/picks", { chosen: selected, note: "" }).catch(() => {});
+  if (state.mode === "browse") api("/api/picks", { chosen: selected, note: "" }).catch(e => { document.getElementById("status").textContent = "Your picks weren’t saved: " + e.message; });
   renderGrid(); renderFooter(); renderStatus();
 }
 
@@ -204,7 +204,7 @@ document.addEventListener("keydown", e => {
   if (state && state.mode === "propose" && document.activeElement.tagName !== "INPUT" && /^[1-9]$/.test(e.key)) { const item = state.items[Number(e.key) - 1]; if (item) toggle(item.id); }
 });
 
-api("/api/state" + "?t=" + token).then(s => {
+api("/api/state").then(s => {
   state = s;
   selected = s.mode === "browse" ? s.picks.filter(id => s.items.some(i => i.id === id)) : [];
   if (s.mode === "propose") document.getElementById("controls").remove();

@@ -49,7 +49,6 @@ struct PageState: Codable, Sendable {
     let total: Int
 }
 
-/// Serves the picker page and hands Tim's choice back to the waiting command.
 public final class Picker: @unchecked Sendable {
     public let url: URL
     let mode: PickerMode
@@ -64,7 +63,6 @@ public final class Picker: @unchecked Sendable {
     private var result: PickerResult?
     private let finished = DispatchSemaphore(value: 0)
 
-    /// `ids` limits the page to those items, in that order; nil shows the whole library.
     public init(library: Library, mode: PickerMode, ids: [String]? = nil, port: UInt16 = 0) throws {
         self.mode = mode
         self.token = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
@@ -77,7 +75,7 @@ public final class Picker: @unchecked Sendable {
         var missing: [String] = []
         for item in chosen {
             if let file = library.localFile(for: item), FileManager.default.fileExists(atPath: file.path) { local[item.id] = file }
-            else if let url = item.mediaURL.flatMap(URL.init(string:)), Blocklist.service(for: url) == nil { remote[item.id] = url }
+            else if let url = item.mediaURL.flatMap(URL.init(string:)) { remote[item.id] = url }
             else { missing.append(item.id) }
         }
         if ids != nil, !missing.isEmpty {
@@ -121,7 +119,6 @@ public final class Picker: @unchecked Sendable {
         }
     }
 
-    /// Blocks until Tim chooses, or returns nil at the timeout.
     public func wait(timeout: TimeInterval) -> PickerResult? {
         let outcome = finished.wait(timeout: .now() + timeout)
         lock.lock()
@@ -156,7 +153,11 @@ public final class Picker: @unchecked Sendable {
             }
             let known = Set(items.map(\.id))
             let picks = body.chosen.filter(known.contains)
-            _ = try? status.update { $0.picks = picks }
+            do {
+                try status.update { $0.picks = picks }
+            } catch {
+                return .text(500, "Could not save the picks: \(error)")
+            }
             return .json(picks)
         case ("POST", "/api/choose"):
             guard mode != .browse, let body = try? JSONDecoder().decode(PickerResult.self, from: request.body) else {
@@ -194,7 +195,6 @@ public final class Picker: @unchecked Sendable {
         return .text(404, "No media for \(id).")
     }
 
-    /// "Side by side, classic", for telling options apart on the page.
     static func recipe(_ made: MadeInfo) -> String {
         let layouts = ["single": "One picture", "side": "Side by side", "stack": "Stacked", "sequence": "One after another"]
         let styles = ["classic": "classic captions", "bar": "caption bar", "subtitle": "subtitle", "template": "template boxes"]
