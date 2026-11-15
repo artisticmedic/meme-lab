@@ -1,0 +1,15 @@
+.build/
+.swiftpm/
+*.xcodeproj
+.DS_Store
+
+# The repository is public and carries no meme media: templates are fetched at runtime
+# and saved GIFs stay in the local library.
+*.gif
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.mp4
+*.mov
+*.m4v
