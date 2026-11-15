@@ -244,10 +244,5 @@ extension AppModel {
         return NSItemProvider(contentsOf: file) ?? NSItemProvider()
     }
 
-    func recipe(_ item: Item) -> String? {
-        guard let made = item.made else { return nil }
-        let layouts = ["single": "One picture", "side": "Side by side", "stack": "Stacked", "sequence": "One after another"]
-        let styles = ["classic": "classic captions", "bar": "caption bar", "subtitle": "subtitle", "template": "template boxes"]
-        return "\(layouts[made.layout] ?? made.layout), \(styles[made.style] ?? made.style)"
-    }
+    func recipe(_ item: Item) -> String? { item.made.map(Picker.recipe) }
 }

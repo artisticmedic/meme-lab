@@ -74,9 +74,9 @@ struct LibraryView: View {
     static func fileURLs(_ providers: [NSItemProvider]) async -> [URL] {
         var urls: [URL] = []
         for provider in providers {
-            if let url = try? await provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) as? URL { urls.append(url) }
-            else if let data = try? await provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) as? Data,
-                    let url = URL(dataRepresentation: data, relativeTo: nil) { urls.append(url) }
+            let loaded = try? await provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier)
+            if let url = loaded as? URL { urls.append(url) }
+            else if let data = loaded as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) { urls.append(url) }
         }
         return urls
     }

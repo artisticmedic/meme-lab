@@ -256,7 +256,7 @@ public final class Picker: @unchecked Sendable {
         return .text(404, "No media for \(id).")
     }
 
-    static func recipe(_ made: MadeInfo) -> String {
+    public static func recipe(_ made: MadeInfo) -> String {
         let layouts = ["single": "One picture", "side": "Side by side", "stack": "Stacked", "sequence": "One after another"]
         let styles = ["classic": "classic captions", "bar": "caption bar", "subtitle": "subtitle", "template": "template boxes"]
         return "\(layouts[made.layout] ?? made.layout), \(styles[made.style] ?? made.style)"
