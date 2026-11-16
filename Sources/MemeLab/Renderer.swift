@@ -45,7 +45,7 @@ enum Renderer {
 
         var browse = model.store.load()
         browse.request = nil
-        browse.picks = Array(browse.picks.prefix(2))
+        browse.picks = browse.picks.isEmpty ? model.items(.templates, matching: "").prefix(2).map(\.id) : Array(browse.picks.prefix(2))
         var propose = browse
         propose.request = AppRequest(mode: .propose, items: options, max: 1, from: "Codex", pid: getpid())
         var pick = browse
@@ -58,7 +58,9 @@ enum Renderer {
             ("library", NSSize(width: 1180, height: 760), { AnyView(library(.all)) }),
             ("library-browse", NSSize(width: 1180, height: 760), { AnyView(library(.all, selecting: false)) }),
             ("make", NSSize(width: 940, height: 620), { AnyView(make()) }),
-            ("settings", NSSize(width: 1180, height: 760), { AnyView(library(.settings)) }),
+            ("settings", NSSize(width: 1180, height: 1300), { AnyView(library(.settings)) }),
+            ("library-clips", NSSize(width: 1180, height: 760), { AnyView(library(.clips, selecting: false)) }),
+            ("library-popular", NSSize(width: 1180, height: 760), { AnyView(library(.popular, selecting: false)) }),
         ]
         var failed = false
         for (name, size, make) in surfaces {

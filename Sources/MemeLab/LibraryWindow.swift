@@ -14,6 +14,23 @@ final class LibraryState: ObservableObject {
     @Published var naming = false
     @Published var newCollection = ""
     @Published var dropTargeted = false
+    /// Set by Edit › Find, possibly before the window exists; the view clears it once the field has focus.
+    @Published var wantsSearchFocus = false
+    private var anchor: String?
+
+    /// Command toggles one item, Shift selects the run from the last plain click, and a plain click selects one.
+    func click(_ id: String, in order: [String]) {
+        let modifiers = NSEvent.modifierFlags
+        if modifiers.contains(.command) {
+            if let index = selection.firstIndex(of: id) { selection.remove(at: index) } else { selection.append(id) }
+            anchor = id
+        } else if modifiers.contains(.shift), let anchor, let from = order.firstIndex(of: anchor), let to = order.firstIndex(of: id) {
+            selection = from <= to ? Array(order[from...to]) : Array(order[to...from].reversed())
+        } else {
+            selection = [id]
+            anchor = id
+        }
+    }
 }
 
 struct LibraryView: View {
@@ -21,6 +38,7 @@ struct LibraryView: View {
     @ObservedObject var state: LibraryState
     @FocusState private var searchFocused: Bool
     @FocusState private var gridFocused: Bool
+    @State private var copiedPrompt = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -37,6 +55,11 @@ struct LibraryView: View {
             }
         }
         .animation(.easeOut(duration: 0.18), value: state.selection.isEmpty)
+        .onAppear(perform: focusSearchIfAsked)
+        .onChange(of: state.wantsSearchFocus) { focusSearchIfAsked() }
+        .onChange(of: model.status.picks) {
+            if state.shelf == .picked { state.selection.removeAll { !model.status.picks.contains($0) } }
+        }
         .onChange(of: model.items) { state.selection.removeAll { model.item($0) == nil } }
         .ignoresSafeArea(.container, edges: .top)
         .frame(minWidth: 900, minHeight: 600)
@@ -81,6 +104,14 @@ struct LibraryView: View {
         }
     }
 
+    private func focusSearchIfAsked() {
+        guard state.wantsSearchFocus else { return }
+        DispatchQueue.main.async {
+            searchFocused = true
+            state.wantsSearchFocus = false
+        }
+    }
+
     static func fileURLs(_ providers: [NSItemProvider]) async -> [URL] {
         var urls: [URL] = []
         for provider in providers {
@@ -95,7 +126,7 @@ struct LibraryView: View {
         VStack(alignment: .leading, spacing: 4) {
             Color.clear.frame(height: topBarHeight).background(WindowDragArea()).padding(.horizontal, -8)
             sectionLabel("Library")
-            ForEach(Shelf.main, id: \.self) { shelf in sidebarRow(shelf, title: shelf == .new ? "New and rising" : shelf.title) }
+            ForEach(Shelf.library, id: \.self) { shelf in sidebarRow(shelf, title: shelf.title) }
             sectionLabel("Collections").padding(.top, 12)
             ForEach(model.collections, id: \.self) { name in
                 sidebarRow(.collection(name), title: name)
@@ -154,7 +185,7 @@ struct LibraryView: View {
         let items = model.items(state.shelf, matching: state.query)
         return VStack(spacing: 0) {
             TopBar {
-                SearchField(text: $state.query, prompt: "Search \(model.count(state.shelf)) memes by name or feeling", focus: $searchFocused)
+                SearchField(text: $state.query, prompt: model.count(state.shelf) > 1 ? "Search \(model.count(state.shelf)) memes by name or feeling" : "Search by name or feeling", focus: $searchFocused)
                 Menu {
                     Button("Add Files…") { addFiles(recording: false) }
                     Button("Add My Own Recordings…") { addFiles(recording: true) }
@@ -178,25 +209,33 @@ struct LibraryView: View {
                 .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.07)))
                 .padding(.horizontal, 16).padding(.bottom, 8)
             }
+            if state.shelf == .popular, state.query.isEmpty, !items.isEmpty {
+                Text("Imgflip's 100 most used memes, most used first. New marks memes added to the library or the list in the last two weeks.")
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 20).padding(.bottom, 8)
+            }
             GeometryReader { viewport in
                 ScrollView {
                     VStack(spacing: 0) {
-                        if items.isEmpty {
-                            Text(emptyText).font(.system(size: 15)).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                                .frame(maxWidth: 360).padding(.top, 80)
-                        }
+                        if items.isEmpty { emptyState }
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 168, maximum: 260), spacing: 10, alignment: .top)], spacing: 10) {
                             ForEach(items) { item in
-                                Tile(item: item, picked: model.status.picks.contains(item.id), selected: state.selection.contains(item.id), height: 128)
-                                    .onTapGesture(count: 2) { model.togglePick(item.id) }
-                                    .simultaneousGesture(TapGesture().modifiers(.command).onEnded { toggleSelection(item.id) })
-                                    .onTapGesture { state.selection = [item.id]; gridFocused = true }
+                                Tile(item: item, picked: model.status.picks.contains(item.id), selected: state.selection.contains(item.id),
+                                     height: 128, onTogglePick: { model.togglePick(item.id) })
+                                    .onTapGesture {
+                                        gridFocused = true
+                                        if (NSApp.currentEvent?.clickCount ?? 1) >= 2, canMake([item.id]) {
+                                            state.making = [item.id]
+                                        } else {
+                                            state.click(item.id, in: items.map(\.id))
+                                        }
+                                    }
                                     .contextMenu {
                                         if canMake(targets(item.id)) {
-                                    Button("Make GIF…") { state.making = targets(item.id) }
-                                }
+                                            Button("Make GIF…") { state.making = targets(item.id) }
+                                        }
                                         Button(model.status.picks.contains(item.id) ? "Unpick" : "Pick") { model.togglePick(item.id) }
-                                        Button("Copy") { Task { await model.copy(item) } }
+                                        Button("Copy") { Task { await model.copy(targets(item.id).compactMap(model.item)) } }
                                         Divider()
                                         Button(item.kind == .template ? "Hide…" : "Remove…") { state.removing = targets(item.id) }
                                     }
@@ -222,28 +261,101 @@ struct LibraryView: View {
                 state.selection = []
                 return .handled
             }
+            if !model.status.picks.isEmpty { picksBar }
         }
         .frame(maxWidth: .infinity)
     }
 
-    private var emptyText: String {
-        if !state.query.isEmpty { return "Nothing matches “\(state.query)”." }
-        switch state.shelf {
-        case .clips: return "No clips yet. Drop GIFs, images or videos here, or click Add."
-        case .made: return "Nothing made yet. Click Make GIF on any template, or ask an agent for a meme."
-        case .new: return "Nothing new in the last two weeks."
-        case .all, .templates: return "The library is empty. Refresh templates in Settings."
-        default: return "Nothing here."
+    private var picksBar: some View {
+        let picks = model.status.picks.compactMap(model.item)
+        let ids = picks.map(\.id)
+        return VStack(spacing: 0) {
+            Divider()
+            HStack(spacing: 8) {
+                Text("\(picks.count) picked").font(.system(size: 13, weight: .semibold)).padding(.trailing, 4)
+                ForEach(picks) { item in
+                    MediaPreview(item: item, playing: false, maxPixel: 120)
+                        .frame(width: 44, height: 44)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .overlay(alignment: .topTrailing) {
+                            Button { model.togglePick(item.id) } label: {
+                                Image(systemName: "xmark.circle.fill").font(.system(size: 15)).symbolRenderingMode(.palette)
+                                    .foregroundStyle(Color.white, Color.black.opacity(0.6))
+                            }
+                            .buttonStyle(.plain)
+                            .offset(x: 5, y: -5)
+                            .accessibilityLabel("Unpick \(item.title)")
+                        }
+                        .help(item.title)
+                }
+                Spacer(minLength: 12)
+                if canMake(ids) {
+                    Button("Make GIF") { state.making = ids }.buttonStyle(PillButtonStyle(prominent: true))
+                }
+                Button(copiedPrompt ? "Copied" : "Copy Prompt") {
+                    model.copyPrompt(idea: "")
+                    copiedPrompt = true
+                    Task { try? await Task.sleep(for: .seconds(1.5)); copiedPrompt = false }
+                }
+                .buttonStyle(PillButtonStyle())
+                .help("Copies a prompt that tells your agent to make a meme from these picks.")
+                if !model.config.agentCommand.isEmpty {
+                    Button("Ask Agent") { model.askAgent(idea: "") }.buttonStyle(PillButtonStyle())
+                }
+                Button("Clear") { model.clearPicks() }.buttonStyle(PillButtonStyle())
+            }
+            .padding(.horizontal, 16).padding(.vertical, 10)
         }
+        .background(Surface.card)
+    }
+
+    @ViewBuilder private var emptyState: some View {
+        VStack(spacing: 10) {
+            if !state.query.isEmpty {
+                emptyText("Nothing matches “\(state.query)”.", nil)
+                if state.shelf != .all {
+                    Button("Search All Memes") { state.shelf = .all }.buttonStyle(PillButtonStyle())
+                }
+            } else {
+                switch state.shelf {
+                case .clips:
+                    emptyText("No clips yet", "Clips are GIFs and videos of your own, like reactions you saved or screen recordings. Drop them here or add them.")
+                    HStack(spacing: 8) {
+                        Button("Add Files…") { addFiles(recording: false) }.buttonStyle(PillButtonStyle(prominent: true))
+                        Button("Add My Own Recordings…") { addFiles(recording: true) }.buttonStyle(PillButtonStyle())
+                    }
+                case .made:
+                    emptyText("Nothing made yet", "GIFs you make land here, whether you make them in this window or an agent makes them with the meme command.")
+                    Button("Browse Templates") { state.shelf = .templates }.buttonStyle(PillButtonStyle(prominent: true))
+                case .picked:
+                    emptyText("Nothing picked", "Picks are the memes you hand to an agent, up to four. Click the circle on a tile to pick it.")
+                    Button("Browse Templates") { state.shelf = .templates }.buttonStyle(PillButtonStyle(prominent: true))
+                case .popular:
+                    emptyText("Not loaded yet", "Imgflip's 100 most used memes show here once the templates refresh.")
+                    Button(model.syncing ? "Refreshing…" : "Refresh Now") { model.sync() }.buttonStyle(PillButtonStyle(prominent: true)).disabled(model.syncing)
+                case .all, .templates:
+                    emptyText("The library is empty", "Load about 270 templates from memegen and Imgflip.")
+                    Button(model.syncing ? "Refreshing…" : "Refresh Now") { model.sync() }.buttonStyle(PillButtonStyle(prominent: true)).disabled(model.syncing)
+                case .collection, .settings:
+                    emptyText("This collection is empty.", nil)
+                }
+            }
+        }
+        .frame(maxWidth: 400).padding(.top, 80)
+    }
+
+    private func emptyText(_ title: String, _ detail: String?) -> some View {
+        VStack(spacing: 6) {
+            Text(title).font(.system(size: 17, weight: .semibold))
+            if let detail { Text(detail).font(.system(size: 14)).foregroundStyle(.secondary) }
+        }
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func targets(_ id: String) -> [String] { state.selection.contains(id) ? state.selection : [id] }
 
     private func canMake(_ ids: [String]) -> Bool { DetailPane.canMake(ids, model: model) }
-
-    private func toggleSelection(_ id: String) {
-        if let index = state.selection.firstIndex(of: id) { state.selection.remove(at: index) } else { state.selection.append(id) }
-    }
 
     private func addFiles(recording: Bool) {
         guard let files = Self.chooseMedia() else { return }
@@ -289,7 +401,9 @@ struct DetailPane: View {
                 if Self.canMake(state.selection, model: model) {
                     Button("Make GIF") { state.making = state.selection }.buttonStyle(PillButtonStyle(prominent: true))
                 }
-                Button("Pick") { model.pick(state.selection) }.buttonStyle(PillButtonStyle())
+                let allPicked = state.selection.allSatisfy(model.status.picks.contains)
+                Button(allPicked ? "Unpick All" : "Pick All") { allPicked ? model.unpick(state.selection) : model.pick(state.selection) }
+                    .buttonStyle(PillButtonStyle())
                 Button("Remove…") { state.removing = state.selection }.buttonStyle(PillButtonStyle())
             }
             if state.selection.count > 4 {
@@ -316,7 +430,7 @@ struct DetailPane: View {
                         Button("Make GIF") { state.making = [item.id] }.buttonStyle(PillButtonStyle(prominent: true))
                     }
                     Button(picked ? "Unpick" : "Pick") { model.togglePick(item.id) }.buttonStyle(PillButtonStyle(selected: picked))
-                    Button("Copy") { Task { await model.copy(item) } }.buttonStyle(PillButtonStyle())
+                    Button("Copy") { Task { await model.copy([item]) } }.buttonStyle(PillButtonStyle())
                     if let file = model.localFile(item), item.kind != .template {
                         Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([file]) }.buttonStyle(PillButtonStyle())
                     }

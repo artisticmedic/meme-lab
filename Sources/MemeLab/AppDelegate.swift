@@ -4,11 +4,12 @@ import SwiftUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSDraggingDestination {
-    private let model = AppModel()
-    private let libraryState = LibraryState()
+    let model = AppModel()
+    let libraryState = LibraryState()
     private var item: NSStatusItem!
     private var panel: PanelController!
-    private var library: NSWindow?
+    private(set) var library: NSWindow?
+    private var refreshTimer: Timer?
     private var waitingCommand: DispatchSourceProcess?
     private var watchedRequest: String?
     private var openedRequest: String?
@@ -48,8 +49,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSDr
                 }
             }
         }
-        NSApp.mainMenu = Self.mainMenu()
+        NSApp.mainMenu = mainMenu()
         statusChanged(model.status)
+        model.refreshIfStale()
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.model.refreshIfStale() }
+        }
         let arguments = CommandLine.arguments
         let atLogin = NSAppleEventManager.shared().currentAppleEvent?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
         if arguments.contains("--library") || (!atLogin && !arguments.contains("--quiet") && model.status.request == nil) { openLibrary() }
@@ -103,7 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSDr
         panel.toggle(relativeTo: button)
     }
 
-    private func openPanel() {
+    func openPanel() {
         guard let button = item.button else { return }
         panel.open(relativeTo: button)
     }
@@ -161,42 +166,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSDr
 
     private static func files(_ info: NSDraggingInfo) -> [URL] {
         info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
-    }
-
-    private static func mainMenu() -> NSMenu {
-        let main = NSMenu()
-        func add(_ title: String, _ items: [NSMenuItem]) {
-            let item = NSMenuItem(), menu = NSMenu(title: title)
-            items.forEach(menu.addItem)
-            item.submenu = menu
-            main.addItem(item)
-        }
-        add(About.short, [
-            NSMenuItem(title: "About \(About.short)", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: ""),
-            NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ","),
-            .separator(),
-            NSMenuItem(title: "Hide \(About.short)", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h"),
-            .separator(),
-            NSMenuItem(title: "Quit \(About.short)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"),
-        ])
-        add("File", [
-            NSMenuItem(title: "Add Files…", action: #selector(addFiles), keyEquivalent: "o"),
-            NSMenuItem(title: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"),
-        ])
-        add("Edit", [
-            NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"),
-            NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "Z"),
-            .separator(),
-            NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"),
-            NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"),
-            NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"),
-            NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"),
-        ])
-        add("Window", [
-            NSMenuItem(title: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m"),
-            NSMenuItem(title: "Library", action: #selector(openLibrary), keyEquivalent: "l"),
-        ])
-        return main
     }
 }
 

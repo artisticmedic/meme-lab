@@ -2,12 +2,12 @@ import AppKit
 import Foundation
 
 public enum Clipboard {
-    /// Puts the file itself on the clipboard, so pasting into Discord uploads it.
-    public static func copyFile(_ url: URL, environment: [String: String] = ProcessInfo.processInfo.environment) throws {
+    /// Puts the files themselves on the clipboard, so pasting into Discord uploads them.
+    public static func copyFiles(_ urls: [URL], environment: [String: String] = ProcessInfo.processInfo.environment) throws {
         let board = pasteboard(environment)
         board.clearContents()
-        guard board.writeObjects([url as NSURL]) else {
-            throw MemeError("The clipboard refused \(url.lastPathComponent).")
+        guard board.writeObjects(urls.map { $0 as NSURL }) else {
+            throw MemeError("The clipboard refused \(urls.map(\.lastPathComponent).joined(separator: ", ")).")
         }
     }
 

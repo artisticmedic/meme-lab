@@ -1,7 +1,7 @@
 import Foundation
 
 public enum About {
-    public static let version = "1.1.0"
+    public static let version = "1.2.0"
     public static let name = "Tim's Astonishing Meme Laboratory"
     public static let short = "Meme Lab"
 }

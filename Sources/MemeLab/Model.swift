@@ -3,11 +3,12 @@ import MemeCore
 import SwiftUI
 
 enum Shelf: Hashable {
-    case all, templates, clips, made, new
+    case all, templates, clips, made, popular, picked
     case collection(String)
     case settings
 
-    static let main: [Shelf] = [.all, .templates, .clips, .made, .new]
+    static let library: [Shelf] = [.all, .templates, .clips, .made, .popular, .picked]
+    static let panel: [Shelf] = [.all, .templates, .clips, .made]
 
     var title: String {
         switch self {
@@ -15,7 +16,8 @@ enum Shelf: Hashable {
         case .templates: "Templates"
         case .clips: "Clips"
         case .made: "Made"
-        case .new: "New"
+        case .popular: "Popular"
+        case .picked: "Picked"
         case .collection(let name): name
         case .settings: "Settings"
         }
@@ -27,7 +29,8 @@ enum Shelf: Hashable {
         case .templates: "photo.on.rectangle"
         case .clips: "film"
         case .made: "wand.and.stars"
-        case .new: "chart.line.uptrend.xyaxis"
+        case .popular: "chart.line.uptrend.xyaxis"
+        case .picked: "checkmark.circle"
         case .collection: "folder"
         case .settings: "gearshape"
         }
@@ -126,7 +129,8 @@ final class AppModel: ObservableObject {
         case .templates: items.filter { $0.kind == .template }
         case .clips: items.filter { $0.kind == .clip }
         case .made: items.filter { $0.kind == .made }
-        case .new: items.filter { $0.risingSince != nil }
+        case .popular: items.filter { $0.popularity != nil }
+        case .picked: status.picks.compactMap(item)
         case .collection(let name): items.filter { $0.collections.contains(name) }
         }
     }
@@ -141,6 +145,7 @@ final class AppModel: ObservableObject {
         if !words.isEmpty { return Search.run(SearchQuery(words: words, limit: pool.count), in: pool) }
         if !ids.isEmpty { return pool }
         switch shelf {
+        case .picked: return pool
         case .clips, .made: return pool.sorted { $0.added > $1.added }
         default: return pool.sorted { ($0.popularity ?? 1000, $0.title) < ($1.popularity ?? 1000, $1.title) }
         }
@@ -177,21 +182,39 @@ final class AppModel: ObservableObject {
     static let trayLimit = 4
 
     func pick(_ ids: [String]) {
+        var left = 0
         perform {
             try store.update { status in
-                for id in ids where !status.picks.contains(id) && status.picks.count < Self.trayLimit { status.picks.append(id) }
+                for id in ids where !status.picks.contains(id) {
+                    if status.picks.count < Self.trayLimit { status.picks.append(id) } else { left += 1 }
+                }
             }
         }
+        if left > 0 { error = pickLimitMessage(left: left, of: ids.count) }
         reloadStatus()
     }
 
+    private func pickLimitMessage(left: Int, of asked: Int) -> String {
+        let limit = "An agent takes \(Self.trayLimit) picks at most"
+        return asked == 1 ? "\(limit). Unpick one first." : "\(limit), so \(left) of these were not picked. Unpick some first."
+    }
+
+    func unpick(_ ids: [String]) {
+        perform { try store.update { $0.picks.removeAll { ids.contains($0) } } }
+        reloadStatus()
+    }
+
+    /// Decides under the status file's lock, so a pick the `meme` command just changed is not undone by a stale copy here.
     func togglePick(_ id: String) {
+        var full = false
         perform {
             try store.update { status in
                 if let index = status.picks.firstIndex(of: id) { status.picks.remove(at: index) }
                 else if status.picks.count < Self.trayLimit { status.picks.append(id) }
+                else { full = true }
             }
         }
+        if full { error = pickLimitMessage(left: 1, of: 1) }
         reloadStatus()
     }
 
@@ -235,12 +258,16 @@ final class AppModel: ObservableObject {
         perform { try process.run() }
     }
 
-    func copy(_ item: Item) async {
-        guard let file = await MediaStore.shared.file(for: mediaSource(item)) else {
-            error = "\(item.title) has no file to copy yet."
-            return
+    func copy(_ items: [Item]) async {
+        var files: [URL] = []
+        for item in items {
+            guard let file = await MediaStore.shared.file(for: mediaSource(item)) else {
+                error = "\(item.title) has no file to copy yet."
+                return
+            }
+            files.append(file)
         }
-        perform { try Clipboard.copyFile(file) }
+        perform { try Clipboard.copyFiles(files) }
     }
 
     func preview(_ request: MakeRequest) async throws -> MakePreview {
@@ -316,7 +343,14 @@ final class AppModel: ObservableObject {
         reloadLibrary()
     }
 
-    func sync() {
+    /// Templates and Imgflip's list change weekly, and Popular marks what is new since the last refresh.
+    func refreshIfStale() {
+        guard lastSync.map({ Date().timeIntervalSince($0) > 7 * 86_400 }) ?? true else { return }
+        sync(quietly: true)
+    }
+
+    /// A refresh nobody asked for keeps quiet when it fails and tries again later.
+    func sync(quietly: Bool = false) {
         guard !syncing else { return }
         syncing = true
         let paths = paths, config = config
@@ -326,7 +360,7 @@ final class AppModel: ObservableObject {
                 _ = try await fresh.sync()
                 try fresh.save()
             } catch {
-                self.error = "\(error)"
+                if !quietly { self.error = "\(error)" }
             }
             syncing = false
             reloadLibrary()

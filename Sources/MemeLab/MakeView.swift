@@ -187,7 +187,7 @@ struct MakeView: View {
                 }
             }
             HStack(spacing: 8) {
-                Button("Copy") { if let made { Task { await model.copy(made) } } }
+                Button("Copy") { if let made { Task { await model.copy([made]) } } }
                     .buttonStyle(PillButtonStyle(prominent: true))
                     .disabled(made == nil)
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: result.file)]) }

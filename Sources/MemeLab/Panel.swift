@@ -115,7 +115,7 @@ struct PanelView: View {
         VStack(alignment: .leading, spacing: 8) {
             SearchField(text: $state.query, focus: $searchFocused)
             HStack(spacing: 4) {
-                ForEach(Shelf.main.filter { $0 != .new || model.count(.new) > 0 }, id: \.self) { shelf in
+                ForEach(Shelf.panel, id: \.self) { shelf in
                     Button(shelf.title) { state.shelf = shelf; state.focus = nil }
                         .buttonStyle(PillButtonStyle(selected: state.shelf == shelf))
                 }
@@ -140,7 +140,7 @@ struct PanelView: View {
                             .id(item.id)
                             .onTapGesture { state.focus = index; state.activate(item) }
                             .contextMenu {
-                                Button("Copy") { Task { await model.copy(item) } }
+                                Button("Copy") { Task { await model.copy([item]) } }
                             }
                     }
                 }

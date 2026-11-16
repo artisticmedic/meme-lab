@@ -332,7 +332,7 @@ struct Send: AsyncParsableCommand {
         }
         var result = Output(id: id, file: file.path)
         if copy || (save == nil && !riv) {
-            try Clipboard.copyFile(file)
+            try Clipboard.copyFiles([file])
             result.copied = true
         }
         if let save {

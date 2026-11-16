@@ -192,6 +192,8 @@ struct Tile: View {
     var selected = false
     var height: CGFloat = 100
     var caption: String?
+    /// When set, picking happens through a check circle on the tile and the tile's border shows only selection.
+    var onTogglePick: (() -> Void)?
     @State private var hovering = false
 
     var body: some View {
@@ -209,17 +211,29 @@ struct Tile: View {
                     }
                 }
                 .overlay(alignment: .topTrailing) {
-                    if picked {
-                        Image(systemName: "checkmark").font(.system(size: 11, weight: .bold))
+                    if let onTogglePick {
+                        if picked || hovering {
+                            Button(action: onTogglePick) { checkCircle }
+                                .buttonStyle(.plain)
+                                .help(picked ? "Unpick" : "Pick for your agent")
+                                .accessibilityLabel(picked ? "Unpick \(item.title)" : "Pick \(item.title)")
+                        }
+                    } else if picked {
+                        checkCircle
+                    }
+                }
+                .overlay(alignment: .bottomLeading) {
+                    if item.risingSince != nil {
+                        Text("New").font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(Color(nsColor: .windowBackgroundColor))
-                            .frame(width: 22, height: 22)
-                            .background(Circle().fill(Color.primary.opacity(0.9)))
+                            .padding(.horizontal, 7).frame(height: 20)
+                            .background(Capsule().fill(Color.primary.opacity(0.85)))
                             .padding(6)
                     }
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(picked || selected ? 0.85 : 0), lineWidth: 2)
+                        .strokeBorder(Color.primary.opacity(selected || (picked && onTogglePick == nil) ? 0.85 : 0), lineWidth: 2)
                 }
             Text(caption ?? item.title).font(.system(size: 12)).lineLimit(caption == nil ? 1 : 2)
                 .foregroundStyle(caption == nil ? .primary : .secondary)
@@ -234,6 +248,22 @@ struct Tile: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel([number.map { "Option \($0)" }, item.title, caption, picked ? "picked" : nil].compactMap { $0 }.joined(separator: ", "))
         .accessibilityAddTraits(.isButton)
+        .accessibilityAction(named: picked ? "Unpick" : "Pick") { onTogglePick?() }
+    }
+}
+
+private extension Tile {
+    var checkCircle: some View {
+        ZStack {
+            Circle().fill(picked ? Color.primary.opacity(0.9) : Color.black.opacity(0.35))
+            Circle().strokeBorder(Color.white.opacity(picked ? 0 : 0.95), lineWidth: 1.5)
+            if picked {
+                Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(Color(nsColor: .windowBackgroundColor))
+            }
+        }
+        .frame(width: 24, height: 24)
+        .padding(6)
+        .contentShape(Rectangle())
     }
 }
 

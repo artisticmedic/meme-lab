@@ -263,7 +263,7 @@ struct DeliveryTests {
         let file = try Scratch.make().appending(path: "x.gif")
         try Data("GIF89a".utf8).write(to: file)
         let name = "com.timgailey.memelab.test.\(UUID().uuidString)"
-        try Clipboard.copyFile(file, environment: ["MEME_LAB_PASTEBOARD": name])
+        try Clipboard.copyFiles([file], environment: ["MEME_LAB_PASTEBOARD": name])
         let board = NSPasteboard(name: NSPasteboard.Name(name))
         #expect((board.readObjects(forClasses: [NSURL.self], options: nil)?.first as? URL)?.path == file.path)
     }
