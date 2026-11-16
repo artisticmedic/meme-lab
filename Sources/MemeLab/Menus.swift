@@ -64,6 +64,7 @@ extension AppDelegate: NSMenuItemValidation {
             item(shelf.title, #selector(showShelf(_:)), "\(index + 1)", tag: index)
         } + [
             .separator(),
+            item("Show Details", #selector(toggleDetails), "i"),
             item("Tiles Always Move", #selector(toggleAnimation)),
             .separator(),
             item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
@@ -111,6 +112,9 @@ extension AppDelegate: NSMenuItemValidation {
         case #selector(showShelf(_:)):
             item.state = library != nil && Shelf.library.indices.contains(item.tag) && libraryState.shelf == Shelf.library[item.tag] ? .on : .off
             return true
+        case #selector(toggleDetails):
+            item.title = libraryState.showsDetails ? "Hide Details" : "Show Details"
+            return library != nil && libraryState.shelf != .settings
         case #selector(toggleAnimation):
             item.state = model.config.animateAlways ? .on : .off
             return true
@@ -163,6 +167,8 @@ extension AppDelegate: NSMenuItemValidation {
         libraryState.selection = []
         openLibrary()
     }
+
+    @objc func toggleDetails() { libraryState.showsDetails.toggle() }
 
     @objc func toggleAnimation() { model.setting("animateAlways", model.config.animateAlways ? "false" : "true") }
 

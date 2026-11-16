@@ -33,6 +33,7 @@ enum Renderer {
             let state = LibraryState()
             state.shelf = shelf
             state.selection = selecting ? model.items(.all, matching: "").prefix(1).map(\.id) : []
+            state.showsDetails = selecting
             return LibraryView(state: state).environmentObject(model)
         }
 

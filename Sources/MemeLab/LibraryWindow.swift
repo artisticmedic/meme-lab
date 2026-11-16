@@ -16,20 +16,34 @@ final class LibraryState: ObservableObject {
     @Published var dropTargeted = false
     /// Set by Edit › Find, possibly before the window exists; the view clears it once the field has focus.
     @Published var wantsSearchFocus = false
+    /// Opened and closed only on request, so clicking a tile never reflows the grid under the pointer.
+    @Published var showsDetails = UserDefaults.standard.bool(forKey: "showsDetails")
     private var anchor: String?
+    private var lastClick: (id: String, at: Date)?
 
-    /// Command toggles one item, Shift selects the run from the last plain click, and a plain click selects one.
-    func click(_ id: String, in order: [String]) {
-        let modifiers = NSEvent.modifierFlags
-        if modifiers.contains(.command) {
-            if let index = selection.firstIndex(of: id) { selection.remove(at: index) } else { selection.append(id) }
-            anchor = id
-        } else if modifiers.contains(.shift), let anchor, let from = order.firstIndex(of: anchor), let to = order.firstIndex(of: id) {
-            selection = from <= to ? Array(order[from...to]) : Array(order[to...from].reversed())
-        } else {
+    /// Returns true for the second click of a double-click on the same tile.
+    func click(_ id: String) -> Bool {
+        let now = Date()
+        defer { lastClick = (id, now) }
+        if let lastClick, lastClick.id == id, now.timeIntervalSince(lastClick.at) < NSEvent.doubleClickInterval { return true }
+        selection = [id]
+        anchor = id
+        return false
+    }
+
+    func toggle(_ id: String) {
+        if let index = selection.firstIndex(of: id) { selection.remove(at: index) } else { selection.append(id) }
+        anchor = id
+    }
+
+    /// Selects the run from the last plain or Command click to this one, ending on this one so it fills the detail pane.
+    func extend(to id: String, in order: [String]) {
+        guard let anchor, let from = order.firstIndex(of: anchor), let to = order.firstIndex(of: id) else {
             selection = [id]
-            anchor = id
+            self.anchor = id
+            return
         }
+        selection = from <= to ? Array(order[from...to]) : Array(order[to...from].reversed())
     }
 }
 
@@ -48,13 +62,14 @@ struct LibraryView: View {
                 SettingsView()
             } else {
                 main
-                if !state.selection.isEmpty {
+                if state.showsDetails {
                     Divider()
                     DetailPane(state: state).frame(width: 340).transition(.move(edge: .trailing))
                 }
             }
         }
-        .animation(.easeOut(duration: 0.18), value: state.selection.isEmpty)
+        .animation(.easeOut(duration: 0.18), value: state.showsDetails)
+        .onChange(of: state.showsDetails) { _, shown in UserDefaults.standard.set(shown, forKey: "showsDetails") }
         .onAppear(perform: focusSearchIfAsked)
         .onChange(of: state.wantsSearchFocus) { focusSearchIfAsked() }
         .onChange(of: model.status.picks) {
@@ -198,6 +213,9 @@ struct LibraryView: View {
                 if [.made, .clips].contains(state.shelf), !items.isEmpty {
                     Button("Remove All…") { state.removing = items.map(\.id) }.buttonStyle(PillButtonStyle())
                 }
+                Button("Details") { state.showsDetails.toggle() }
+                    .buttonStyle(PillButtonStyle(selected: state.showsDetails))
+                    .help(state.showsDetails ? "Hide details" : "Show the selected meme's details")
             }
             if let error = model.error {
                 HStack(alignment: .top) {
@@ -222,19 +240,27 @@ struct LibraryView: View {
                             ForEach(items) { item in
                                 Tile(item: item, picked: model.status.picks.contains(item.id), selected: state.selection.contains(item.id),
                                      height: 128, onTogglePick: { model.togglePick(item.id) })
+                                    // Modifier taps are separate gestures because SwiftUI reports a click's modifiers only through them.
+                                    .simultaneousGesture(TapGesture().modifiers(.command).onEnded { state.toggle(item.id); gridFocused = true })
+                                    .simultaneousGesture(TapGesture().modifiers(.shift).onEnded {
+                                        state.extend(to: item.id, in: items.map(\.id))
+                                        gridFocused = true
+                                    })
                                     .onTapGesture {
                                         gridFocused = true
-                                        if (NSApp.currentEvent?.clickCount ?? 1) >= 2, canMake([item.id]) {
-                                            state.making = [item.id]
-                                        } else {
-                                            state.click(item.id, in: items.map(\.id))
-                                        }
+                                        if state.click(item.id), canMake([item.id]) { state.making = [item.id] }
                                     }
                                     .contextMenu {
                                         if canMake(targets(item.id)) {
                                             Button("Make GIF…") { state.making = targets(item.id) }
                                         }
-                                        Button(model.status.picks.contains(item.id) ? "Unpick" : "Pick") { model.togglePick(item.id) }
+                                        let pickTargets = targets(item.id)
+                                        if pickTargets.allSatisfy(model.status.picks.contains) {
+                                            Button("Unpick") { model.unpick(pickTargets) }
+                                        } else {
+                                            Button("Pick") { model.pick(pickTargets) }
+                                        }
+                                        Button("Show Details") { state.showsDetails = true }
                                         Button("Copy") { Task { await model.copy(targets(item.id).compactMap(model.item)) } }
                                         Divider()
                                         Button(item.kind == .template ? "Hide…" : "Remove…") { state.removing = targets(item.id) }
@@ -382,13 +408,16 @@ struct DetailPane: View {
         VStack(spacing: 0) {
             TopBar {
                 Spacer()
-                IconButton(symbol: "xmark", label: "Close") { state.selection = [] }
+                IconButton(symbol: "xmark", label: "Hide Details") { state.showsDetails = false }
                     .padding(.trailing, -8)
             }
             if state.selection.count > 1 {
                 several
             } else if let id = state.selection.last, let item = model.item(id) {
                 detail(item)
+            } else {
+                Text("Select a meme to see how it is used.").font(.system(size: 15)).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center).padding(30).frame(maxWidth: .infinity).padding(.top, 120)
             }
             Spacer(minLength: 0)
         }
